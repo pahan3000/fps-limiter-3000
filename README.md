@@ -10,7 +10,6 @@ This is a fork of [mjd4219/playnite-fps-limiter](https://github.com/mjd4219/play
 - **Global and per-game FPS limits**
 - **Sync modes:** Async / Back Edge, Front Edge, Scanline Sync (including half), Special K Latent Sync, NVIDIA Reflex
 - **Reflex markers** control
-- **Per-monitor global limits** and refresh-rate matching
 - **FreeSync handling** AMD only
 - **Special K integration:** automatic `SpecialK.ini` creation, a built-in ini editor with descriptions, local or global injection per game
 - **Special K updater:** checks the Nightly or Discord channel, updates the global install and also refreshes Special K DLLs injected locally into your Playnite games
