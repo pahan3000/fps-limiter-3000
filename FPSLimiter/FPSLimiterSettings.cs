@@ -580,7 +580,15 @@ namespace FPSLimiter
         {
             var choice = (Resolutions ?? new List<ResolutionGlobalSettings>()).FirstOrDefault(r =>
                 r != null && r.UseOverride && r.Width == width && r.Height == height);
-            return choice == null ? GetLimit(windowsGames) : choice.GetLimit(windowsGames);
+            if (choice == null) return GetLimit(windowsGames);
+            var perResolution = choice.GetLimit(windowsGames);
+            // A resolution profile only takes over when it has a cap of its own. An empty/disabled one
+            // (e.g. created before the monitor default was set) must not mask the monitor's Global FPS.
+            var monitorDefault = GetLimit(windowsGames);
+            if ((perResolution == null || !perResolution.Enabled || perResolution.FrameLimit <= 0) &&
+                monitorDefault != null && monitorDefault.Enabled && monitorDefault.FrameLimit > 0)
+                return monitorDefault;
+            return perResolution;
         }
     }
 

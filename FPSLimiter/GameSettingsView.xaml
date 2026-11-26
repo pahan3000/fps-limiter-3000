@@ -52,6 +52,34 @@
                 <Setter Property="BorderBrush" Value="{DynamicResource ReShadeBorder}"/>
                 <Setter Property="FontWeight" Value="Normal"/>
                 <Setter Property="MinHeight" Value="36"/>
+                <!-- Own template: the global Button template swaps Background to the hover grey on keyboard focus,
+                     which turned the selected (blue) backend dark after clicking it, plus a blue glow. Here keyboard focus
+                     changes nothing; hover/press are overlays, so the selected button keeps its solid fill. -->
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="5">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                                </Border>
+                                <Border x:Name="HoverOverlay" Background="#14FFFFFF" CornerRadius="5" Opacity="0" IsHitTestVisible="False"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="HoverOverlay" Property="Opacity" Value="1"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="HoverOverlay" Property="Background" Value="#26FFFFFF"/>
+                                    <Setter TargetName="HoverOverlay" Property="Opacity" Value="1"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.5"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
             <Style x:Key="FpsBackendSelected" TargetType="Button" BasedOn="{StaticResource FpsBackendOption}">
                 <Setter Property="Background" Value="{DynamicResource UiPrimary}"/>
@@ -77,12 +105,14 @@
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
                                 <Border x:Name="HoverOverlay" Background="#0AFFFFFF" CornerRadius="{StaticResource FpsButtonRadius}" Opacity="0" IsHitTestVisible="False"/>
+                                <Border x:Name="FocusRing" BorderBrush="{DynamicResource ReShadeAccent}" BorderThickness="2" CornerRadius="{StaticResource FpsButtonRadius}" Opacity="0" IsHitTestVisible="False"/>
                             </Grid>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter TargetName="HoverOverlay" Property="Opacity" Value="1"/>
                                     <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource FlatButtonBorderHover}"/>
                                 </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="FocusRing" Property="Opacity" Value="1"/></Trigger>
                                 <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bd" Property="Opacity" Value="0.8"/></Trigger>
                                 <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
                             </ControlTemplate.Triggers>
@@ -127,6 +157,10 @@
                                 <Ellipse x:Name="Thumb" Width="{DynamicResource SwitchThumbSize}" Height="{DynamicResource SwitchThumbSize}" Fill="{DynamicResource SwitchThumbBrush}" HorizontalAlignment="Left" Margin="{DynamicResource GameSwitchThumbLeftMargin}" VerticalAlignment="Center"/>
                             </Grid>
                             <ControlTemplate.Triggers>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource ReShadeAccent}"/>
+                                    <Setter TargetName="Track" Property="Effect"><Setter.Value><DropShadowEffect Color="#FF4A9EFF" BlurRadius="10" ShadowDepth="0" Opacity="0.9"/></Setter.Value></Setter>
+                                </Trigger>
                                 <Trigger Property="IsChecked" Value="True">
                                     <Setter TargetName="Track" Property="Background" Value="{DynamicResource SwitchTrackOnBrush}"/>
                                     <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource SwitchTrackOnBrush}"/>
@@ -142,8 +176,9 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <ScrollViewer x:Name="MainScroll" VerticalScrollBarVisibility="Auto" MaxHeight="640" Padding="16" Background="{DynamicResource ReShadeBg}" ScrollChanged="OnMainScrollChanged">
-        <StackPanel>
+    <ScrollViewer x:Name="MainScroll" Focusable="False" VerticalScrollBarVisibility="Auto" MaxHeight="640" Background="{DynamicResource ReShadeBg}" ScrollChanged="OnMainScrollChanged">
+        <!-- Margin instead of ScrollViewer.Padding: Playnite Fullscreen restyles ScrollViewer and ignores Padding, so cards ran edge to edge. -->
+        <StackPanel Margin="16" KeyboardNavigation.DirectionalNavigation="Contained" KeyboardNavigation.TabNavigation="Continue">
             <!-- Backend -->
             <Border Style="{StaticResource FpsPanel}">
                 <StackPanel>

@@ -62,12 +62,98 @@ namespace FPSLimiter
             if (window == null) return;
             var needed = MainScroll.ComputedVerticalScrollBarVisibility == Visibility.Visible
                 ? SystemParameters.VerticalScrollBarWidth : 0.0;
-            var delta = needed - scrollbarGutterAdded;
+            var uiScale = (LayoutTransform as ScaleTransform)?.ScaleX ?? 1.0;
+            var delta = (needed - scrollbarGutterAdded) * uiScale;
             if (Math.Abs(delta) < 0.5) return;
             scrollbarGutterAdded = needed;
             window.MinWidth = Math.Max(0, window.MinWidth + delta);
             window.Width += delta;
             window.Left -= delta / 2;
+        }
+
+        private void OnViewLoaded(object sender, RoutedEventArgs e)
+        {
+            // Controller / keyboard navigation needs a starting focus; Fullscreen opens the dialog with none.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    Window.GetWindow(this)?.Activate();
+                    var start = (limiterService.ShouldUseSpecialKBackend(games.FirstOrDefault())
+                        ? UseSpecialKButton : UseRtssButton) ?? UseSpecialKButton;
+                    Keyboard.Focus(start);
+                    start.Focus();
+                }
+                catch { /* cosmetic */ }
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        private static FocusNavigationDirection? ArrowDirection(Key key)
+        {
+            switch (key)
+            {
+                case Key.Up: return FocusNavigationDirection.Up;
+                case Key.Down: return FocusNavigationDirection.Down;
+                case Key.Left: return FocusNavigationDirection.Left;
+                case Key.Right: return FocusNavigationDirection.Right;
+                default: return null;
+            }
+        }
+
+        // Keyboard path. In Playnite Fullscreen only the D-pad arrives as real arrow keys (A / B are handled in
+        // OnViewKeyDown). Custom templated controls don't react to Enter on their own, and combo boxes / sliders
+        // swallow arrows.
+        private void OnViewPreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Handled) return;
+            try
+            {
+                var focused = Keyboard.FocusedElement as DependencyObject;
+                var key = e.Key;
+
+                var openCombo = focused as ComboBox;
+                if (focused is ComboBoxItem cbi) openCombo = ItemsControl.ItemsControlFromItemContainer(cbi) as ComboBox;
+                var comboOpen = openCombo != null && openCombo.IsDropDownOpen;
+
+                if (key == Key.Escape)
+                {
+                    if (comboOpen) return; // let the combo close its list first
+                    e.Handled = true;
+                    CloseRequested?.Invoke();
+                    return;
+                }
+
+                if (comboOpen || focused is ComboBoxItem) return;
+
+                var dir = ArrowDirection(key);
+                if (dir.HasValue && (focused is ComboBox || focused is Slider))
+                {
+                    e.Handled = true;
+                    (focused as UIElement)?.MoveFocus(new TraversalRequest(dir.Value));
+                    return;
+                }
+
+                if (key != Key.Enter && key != Key.Return) return;
+                if (focused is TextBox) return;
+
+                // Some Playnite setups also simulate Enter for the controller's confirm button; the controller
+                // event was already handled in OnViewKeyDown, so swallow that echo.
+                if (FullscreenController.IsDuplicateEnter())
+                {
+                    e.Handled = true;
+                    return;
+                }
+
+                if (FullscreenController.ActivateFocused(focused)) e.Handled = true;
+            }
+            catch { /* never let input handling crash Playnite */ }
+        }
+
+        // Playnite Fullscreen sends the controller's A / B as GameControllerInputEventArgs (Key.None), not as
+        // Enter / Escape, so they never reach OnViewPreviewKeyDown. A = activate focused control, B = back.
+        private void OnViewKeyDown(object sender, KeyEventArgs e)
+        {
+            FullscreenController.HandleControllerKey(e, () => CloseRequested?.Invoke());
         }
 
         private void OnGlobalSettingsClick(object sender, RoutedEventArgs e) => OpenGlobalSettingsRequested?.Invoke();
@@ -83,6 +169,9 @@ namespace FPSLimiter
             this.games = games ?? new List<Game>();
             ApplyBrandIcons();
             WireAccordion(RtssPanel?.Parent as Panel);
+            Loaded += OnViewLoaded;
+            PreviewKeyDown += OnViewPreviewKeyDown;
+            KeyDown += OnViewKeyDown;
             WireAccordion((SpecialKPanel?.Content as Panel));
 
             suppressEvents = true;

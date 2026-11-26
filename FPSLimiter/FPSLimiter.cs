@@ -305,66 +305,119 @@ namespace FPSLimiter
                 openGlobalSettingsWindow = null;
             }
 
+            var fullscreen = PlayniteApi.ApplicationInfo.Mode == ApplicationMode.Fullscreen;
             settings.BeginEdit();
-            var window = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
+            Window window = null;
+            System.ComponentModel.PropertyChangedEventHandler themeChanged = null;
+            FPSLimiterSettings appearanceSettings = settings.Settings;
+            try
             {
-                ShowMinimizeButton = false,
-                ShowMaximizeButton = true
-            });
-            window.Title = "FPS Limiter 3000 — Settings";
-            window.Width = 760;
-            window.Height = 820;
-            window.MinWidth = 620;
-            window.MinHeight = 520;
-            window.ResizeMode = ResizeMode.CanResize;
-            AppearancePalette.Apply(window, settings.Settings.ThemePreset, settings.Settings.GlassEffect);
-            window.SetResourceReference(Control.BackgroundProperty, "ReShadeBg");
-            System.ComponentModel.PropertyChangedEventHandler themeChanged = (sender, e) =>
-            {
-                if (string.IsNullOrEmpty(e.PropertyName) ||
-                    e.PropertyName == nameof(FPSLimiterSettings.ThemePreset) ||
-                    e.PropertyName == nameof(FPSLimiterSettings.GlassEffect))
-                    AppearancePalette.Apply(window, settings.Settings.ThemePreset, settings.Settings.GlassEffect);
-            };
-            var appearanceSettings = settings.Settings;
-            appearanceSettings.PropertyChanged += themeChanged;
-            window.AllowsTransparency = false;
-            var dock = new DockPanel();
-            var buttons = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                Margin = new Thickness(10)
-            };
-            var save = new Button { Content = "Save", MinWidth = 90, Margin = new Thickness(4) };
-            var cancel = new Button { Content = "Cancel", MinWidth = 90, Margin = new Thickness(4) };
-            save.Click += (s, e) => { settings.EndEdit(); window.DialogResult = true; window.Close(); };
-            cancel.Click += (s, e) => { settings.CancelEdit(); window.DialogResult = false; window.Close(); };
-            buttons.Children.Add(save);
-            buttons.Children.Add(cancel);
-            DockPanel.SetDock(buttons, Dock.Bottom);
-            dock.Children.Add(buttons);
-            var settingsView = new global::FPSLimiterSettingsUI.FPSLimiterSettingsView { DataContext = settings };
-            var settingsButtonStyle = settingsView.TryFindResource(typeof(Button)) as Style;
-            if (settingsButtonStyle != null)
-            {
-                save.Style = settingsButtonStyle;
-                save.SetResourceReference(Control.BackgroundProperty, "UiPrimary");
-                save.SetResourceReference(Control.ForegroundProperty, "UiPrimaryText");
-                cancel.Style = settingsButtonStyle;
+                window = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
+                {
+                    ShowMinimizeButton = false,
+                    ShowMaximizeButton = true
+                });
+                var shownWindow = window;
+                shownWindow.Title = "FPS Limiter 3000 — Settings";
+                shownWindow.Width = 760;
+                shownWindow.Height = 820;
+                shownWindow.MinWidth = 620;
+                shownWindow.MinHeight = 520;
+                shownWindow.ResizeMode = ResizeMode.CanResize;
+                AppearancePalette.Apply(shownWindow, settings.Settings.ThemePreset, settings.Settings.GlassEffect);
+                shownWindow.SetResourceReference(Control.BackgroundProperty, "ReShadeBg");
+                themeChanged = (sender, e) =>
+                {
+                    if (string.IsNullOrEmpty(e.PropertyName) ||
+                        e.PropertyName == nameof(FPSLimiterSettings.ThemePreset) ||
+                        e.PropertyName == nameof(FPSLimiterSettings.GlassEffect))
+                        AppearancePalette.Apply(shownWindow, settings.Settings.ThemePreset, settings.Settings.GlassEffect);
+                };
+                appearanceSettings.PropertyChanged += themeChanged;
+                shownWindow.AllowsTransparency = false;
+                var dock = new DockPanel();
+                var buttons = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Margin = new Thickness(10)
+                };
+                var save = new Button { Content = "Save", MinWidth = 90, Margin = new Thickness(4) };
+                var cancel = new Button { Content = "Cancel", MinWidth = 90, Margin = new Thickness(4) };
+                var finished = false;
+                Action saveAndClose = () =>
+                {
+                    if (finished) return;
+                    finished = true;
+                    settings.EndEdit();
+                    shownWindow.DialogResult = true;
+                    shownWindow.Close();
+                };
+                save.Click += (s, e) => saveAndClose();
+                cancel.Click += (s, e) =>
+                {
+                    if (finished) return;
+                    finished = true;
+                    settings.CancelEdit();
+                    shownWindow.DialogResult = false;
+                    shownWindow.Close();
+                };
+                buttons.Children.Add(save);
+                buttons.Children.Add(cancel);
+                DockPanel.SetDock(buttons, Dock.Bottom);
+                dock.Children.Add(buttons);
+                var settingsView = new global::FPSLimiterSettingsUI.FPSLimiterSettingsView { DataContext = settings };
+                var settingsButtonStyle = settingsView.TryFindResource(typeof(Button)) as Style;
+                if (settingsButtonStyle != null)
+                {
+                    save.Style = settingsButtonStyle;
+                    save.SetResourceReference(Control.BackgroundProperty, "UiPrimary");
+                    save.SetResourceReference(Control.ForegroundProperty, "UiPrimaryText");
+                    cancel.Style = settingsButtonStyle;
+                }
+                dock.Children.Add(settingsView);
+                shownWindow.Content = dock;
+
+                // Same window in Desktop and Fullscreen: the layout, size and buttons are identical. The only
+                // Fullscreen-specific part is input. A / B arrive as Playnite controller events (Key.None), which
+                // only exist in Fullscreen, so this handler never fires on Desktop. A activates the focused
+                // control; B goes back and keeps the changes, like Playnite's own Fullscreen settings.
+                shownWindow.KeyDown += (s, e) => FullscreenController.HandleControllerKey(e, saveAndClose);
+                if (fullscreen)
+                {
+                    // D-pad arrives as real arrow keys; combo boxes / sliders would swallow them. Controller
+                    // starting focus: Fullscreen opens dialogs with nothing focused.
+                    shownWindow.PreviewKeyDown += (s, e) => FullscreenController.TryMoveFocusFromArrow(e);
+                    FullscreenController.FocusFirst(settingsView, shownWindow);
+                }
+
+                shownWindow.WindowStartupLocation = WindowStartupLocation.Manual;
+                shownWindow.Loaded += (_, __) => CenterOnWorkArea(shownWindow);
+                openGlobalSettingsWindow = shownWindow;
+                shownWindow.Closed += (s, e) =>
+                {
+                    if (ReferenceEquals(openGlobalSettingsWindow, shownWindow)) openGlobalSettingsWindow = null;
+                };
+                shownWindow.ShowDialog();
+                if (shownWindow.DialogResult != true) settings.CancelEdit();
             }
-            dock.Children.Add(settingsView);
-            window.Content = dock;
-            window.WindowStartupLocation = WindowStartupLocation.Manual;
-            window.Loaded += (_, __) => CenterOnWorkArea(window);
-            openGlobalSettingsWindow = window;
-            window.Closed += (s, e) =>
+            catch (Exception ex)
             {
-                if (ReferenceEquals(openGlobalSettingsWindow, window)) openGlobalSettingsWindow = null;
-            };
-            try { window.ShowDialog(); }
-            finally { appearanceSettings.PropertyChanged -= themeChanged; }
-            if (window.DialogResult != true) settings.CancelEdit();
+                logger.Error(ex, "Could not open the FPS Limiter global settings window.");
+                try { settings.CancelEdit(); } catch { }
+                openGlobalSettingsWindow = null;
+                try
+                {
+                    PlayniteApi.Dialogs.ShowErrorMessage(
+                        "Could not open global settings:\n" + ex.Message,
+                        "FPS Limiter 3000");
+                }
+                catch { }
+            }
+            finally
+            {
+                if (themeChanged != null) appearanceSettings.PropertyChanged -= themeChanged;
+            }
         }
 
         [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetForegroundWindow")]
@@ -900,8 +953,17 @@ namespace FPSLimiter
                 var title = games.Count == 1 ? games[0].Name : games.Count + " games";
                 window.Title = "FPS Limiter 3000 — " + title;
                 window.Content = view;
-                window.Width = 480;
-                window.MinWidth = 420;
+                // Fullscreen is viewed from a couch: scale the whole panel up (kept within the screen height).
+                double uiScale = 1.0;
+                if (PlayniteApi.ApplicationInfo.Mode == ApplicationMode.Fullscreen)
+                {
+                    var work = SystemParameters.WorkArea;
+                    uiScale = Math.Max(1.0, work.Height / 1080.0) * 1.3;
+                    uiScale = Math.Max(1.0, Math.Min(uiScale, work.Height * 0.92 / 700.0));
+                    view.LayoutTransform = new ScaleTransform(uiScale, uiScale);
+                }
+                window.Width = 480 * uiScale;
+                window.MinWidth = 420 * uiScale;
                 window.SizeToContent = SizeToContent.Height;
                 window.ResizeMode = ResizeMode.NoResize;
                 var gameAppearanceSettings = settings.Settings;

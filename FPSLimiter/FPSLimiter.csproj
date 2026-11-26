@@ -65,6 +65,7 @@
     <Compile Include="BrandIcons.cs" />
     <Compile Include="ExtensionUpdateService.cs" />
     <Compile Include="FPSLimiter.cs" />
+    <Compile Include="FullscreenController.cs" />
     <Compile Include="FreeSyncSessionManager.cs" />
     <Compile Include="VrrDisplayRouter.cs" />
     <Compile Include="VulkanApiDetector.cs" />
