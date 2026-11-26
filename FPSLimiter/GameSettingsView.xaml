@@ -1,0 +1,395 @@
+<UserControl xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" x:Class="FPSLimiter.GameSettingsView" mc:Ignorable="d" d:DesignWidth="480">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="ExtensionTheme.xaml"/></ResourceDictionary.MergedDictionaries>
+            <SolidColorBrush x:Key="FpsDanger" Color="#FFE05555"/>
+
+            <Style TargetType="CheckBox" BasedOn="{StaticResource OverlaySettingsSwitch}"/>
+            <Style x:Key="FpsMutedText" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{DynamicResource ReShadeTextMuted}"/>
+                <Setter Property="FontSize" Value="{DynamicResource FontSizeSmall}"/>
+            </Style>
+            <!-- Match global settings: section rows with Win11 blue accent when expanded -->
+            <Style x:Key="FpsSectionExpander" TargetType="Expander" BasedOn="{StaticResource TreeBranchExpander}">
+                <Setter Property="Template" Value="{StaticResource UnifiedSectionTemplate}"/>
+            </Style>
+            <Style TargetType="Expander" BasedOn="{StaticResource FpsSectionExpander}"/>
+            <!-- Content that already sits inside a section card: no second card behind it. -->
+            <Style x:Key="FpsPlain" TargetType="Border">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="0"/>
+            </Style>
+            <Style x:Key="FpsSectionHeader" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{DynamicResource ReShadeText}"/>
+                <Setter Property="FontWeight" Value="Normal"/>
+            </Style>
+            <Style x:Key="FpsPanel" TargetType="Border">
+                <Setter Property="Background" Value="{DynamicResource UiCard}"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="CornerRadius" Value="4"/>
+                <Setter Property="Padding" Value="16,12"/>
+            </Style>
+            <Style x:Key="FpsRow" TargetType="Border" BasedOn="{StaticResource FpsPanel}">
+                <Setter Property="MinHeight" Value="56"/>
+                <Setter Property="Margin" Value="0,0,0,5"/>
+            </Style>
+            <Style x:Key="FpsPrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Background" Value="{DynamicResource ReShadeAccentSoft}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource ReShadeAccent}"/>
+                <Setter Property="Foreground" Value="{DynamicResource ReShadeAccent}"/>
+                <Setter Property="FontWeight" Value="Normal"/>
+            </Style>
+            <Style x:Key="FpsDangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Background" Value="{DynamicResource ReShadeControlBg}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource ReShadeDanger}"/>
+                <Setter Property="Foreground" Value="{StaticResource FpsDanger}"/>
+                <Setter Property="FontWeight" Value="Normal"/>
+            </Style>
+            <Style x:Key="FpsBackendOption" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Background" Value="{DynamicResource UiButton}"/>
+                <Setter Property="Foreground" Value="{DynamicResource ReShadeText}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource ReShadeBorder}"/>
+                <Setter Property="FontWeight" Value="Normal"/>
+                <Setter Property="MinHeight" Value="36"/>
+            </Style>
+            <Style x:Key="FpsBackendSelected" TargetType="Button" BasedOn="{StaticResource FpsBackendOption}">
+                <Setter Property="Background" Value="{DynamicResource UiPrimary}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource UiPrimary}"/>
+                <Setter Property="Foreground" Value="{DynamicResource UiPrimaryText}"/>
+            </Style>
+            <!-- Flat, thin-rimmed button (no raised gradient). Hover is an overlay so it also works on the selected one. -->
+            <CornerRadius x:Key="FpsButtonRadius">7</CornerRadius>
+            <Style x:Key="FpsFlatButton" TargetType="Button">
+                <Setter Property="Background" Value="{DynamicResource FlatButtonBg}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource FlatButtonBorder}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="{DynamicResource ReShadeText}"/>
+                <Setter Property="FontWeight" Value="Normal"/>
+                <Setter Property="Padding" Value="12,7"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource FpsButtonRadius}" Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <Border x:Name="HoverOverlay" Background="#0AFFFFFF" CornerRadius="{StaticResource FpsButtonRadius}" Opacity="0" IsHitTestVisible="False"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="HoverOverlay" Property="Opacity" Value="1"/>
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource FlatButtonBorderHover}"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bd" Property="Opacity" Value="0.8"/></Trigger>
+                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="FpsPresetButton" TargetType="Button" BasedOn="{StaticResource FpsFlatButton}">
+                <Setter Property="MinHeight" Value="36"/>
+                <Setter Property="Margin" Value="3"/>
+                <Setter Property="Padding" Value="6,6"/>
+                <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            </Style>
+            <Style x:Key="FpsPresetButtonActive" TargetType="Button" BasedOn="{StaticResource FpsPresetButton}">
+                <Setter Property="Background" Value="{DynamicResource UiPrimary}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource UiPrimary}"/>
+                <Setter Property="Foreground" Value="{DynamicResource UiPrimaryText}"/>
+            </Style>
+            <Style x:Key="FpsActionButton" TargetType="Button" BasedOn="{StaticResource FpsFlatButton}">
+                <Setter Property="MinHeight" Value="36"/>
+                <Setter Property="Margin" Value="3"/>
+                <Setter Property="Padding" Value="4,6"/>
+            </Style>
+            <Style x:Key="FpsBtnIcon" TargetType="Path">
+                <Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                <Setter Property="StrokeThickness" Value="1.5"/>
+                <Setter Property="StrokeLineJoin" Value="Round"/>
+                <Setter Property="StrokeStartLineCap" Value="Round"/>
+                <Setter Property="StrokeEndLineCap" Value="Round"/>
+                <Setter Property="Stretch" Value="Uniform"/>
+                <Setter Property="Width" Value="12"/>
+                <Setter Property="Height" Value="12"/>
+                <Setter Property="Margin" Value="0,0,5,0"/>
+            </Style>
+            <Style x:Key="ToggleSwitchStyle" TargetType="ToggleButton">
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Grid Width="40" Height="22" Background="Transparent">
+                                <Border x:Name="Track" CornerRadius="11" Background="{DynamicResource SwitchTrackOffBrush}" BorderBrush="{DynamicResource SwitchTrackBorderBrush}" BorderThickness="1"/>
+                                <Ellipse x:Name="Thumb" Width="{DynamicResource SwitchThumbSize}" Height="{DynamicResource SwitchThumbSize}" Fill="{DynamicResource SwitchThumbBrush}" HorizontalAlignment="Left" Margin="{DynamicResource GameSwitchThumbLeftMargin}" VerticalAlignment="Center"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Track" Property="Background" Value="{DynamicResource SwitchTrackOnBrush}"/>
+                                    <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource SwitchTrackOnBrush}"/>
+                                    <Setter TargetName="Thumb" Property="Fill" Value="{DynamicResource SwitchThumbOnBrush}"/>
+                                    <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+                                    <Setter TargetName="Thumb" Property="Margin" Value="{DynamicResource GameSwitchThumbRightMargin}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <ScrollViewer x:Name="MainScroll" VerticalScrollBarVisibility="Auto" MaxHeight="640" Padding="16" Background="{DynamicResource ReShadeBg}" ScrollChanged="OnMainScrollChanged">
+        <StackPanel>
+            <!-- Backend -->
+            <Border Style="{StaticResource FpsPanel}">
+                <StackPanel>
+                    <DockPanel LastChildFill="True"><TextBlock Text="Limiter backend" Style="{StaticResource FpsSectionHeader}"/></DockPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,10">
+                        <TextBlock x:Name="BackendStatusText" Style="{StaticResource FpsMutedText}"/>
+                    </StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="SpecialKButtonColumn" Width="*"/>
+                            <ColumnDefinition x:Name="BackendButtonSpacerColumn" Width="10"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="UseSpecialKButton" Grid.Column="0" Style="{StaticResource FpsBackendOption}" Click="OnUseSpecialKButtonClick">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Image x:Name="SpecialKButtonIcon" Width="18" Height="18" Margin="0,0,8,0" Stretch="Uniform"
+                                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                                <TextBlock Text="Special K"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="UseRtssButton" Grid.Column="2" Style="{StaticResource FpsBackendOption}" Click="OnUseRtssButtonClick">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Image x:Name="RtssButtonIcon" Width="18" Height="18" Margin="0,0,8,0" Stretch="Uniform"
+                                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                                <TextBlock Text="RTSS"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="GamePreferredMonitorPanel" Visibility="Collapsed" Margin="0,6,0,0" Style="{StaticResource FpsPanel}"><StackPanel>
+                <TextBlock Text="Preferred monitor for this game" Style="{StaticResource FpsSectionHeader}"/>
+                <TextBlock Text="Choose which display to use for limits before the game window is detected."
+                           Style="{StaticResource FpsMutedText}" TextWrapping="Wrap" Margin="0,4,0,6"/>
+                <ComboBox x:Name="GamePreferredMonitorCombo" SelectionChanged="OnGamePreferredMonitorChanged"/>
+            </StackPanel></Border>
+
+            <!-- FPS -->
+            <Expander IsExpanded="True" Margin="0,6,0,0" Style="{StaticResource FpsSectionExpander}"><Expander.Header><StackPanel Orientation="Horizontal"><Path Data="{DynamicResource SpeedIconGeometry}" Stroke="{DynamicResource ReShadeText}" StrokeThickness="1.6" Stretch="Uniform" Width="18" Height="18" Margin="0,0,13,0"/><TextBlock x:Name="FpsCapHeading" Text="FPS cap" FontWeight="Normal" VerticalAlignment="Center"/>
+                    </StackPanel></Expander.Header><Border Style="{StaticResource FpsPlain}">
+                <StackPanel>
+                    <TextBlock x:Name="CurrentFpsText" FontWeight="Normal" Foreground="{DynamicResource ReShadeAccent}" Margin="0,8,0,10"/>
+                    <ItemsControl x:Name="PresetList">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="3"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                    <UniformGrid Columns="4" Margin="0,8,0,0">
+                        <Button Style="{StaticResource FpsActionButton}" MinWidth="88" Click="OnCustomClick"><StackPanel Orientation="Horizontal" HorizontalAlignment="Center"><Path Style="{StaticResource FpsBtnIcon}" Data="M4,20 L5,15.5 L16,4.5 L19.5,8 L8.5,19 Z M14,6.5 L17.5,10"/><TextBlock Text="Custom"/></StackPanel></Button>
+                        <Button Style="{StaticResource FpsActionButton}" MinWidth="88" Click="OnUseGlobalClick"><StackPanel Orientation="Horizontal" HorizontalAlignment="Center"><Path Style="{StaticResource FpsBtnIcon}" Data="M12,3 A9,9 0 1 1 12,21 A9,9 0 1 1 12,3 Z M3,12 L21,12 M12,3 C8,7 8,17 12,21 M12,3 C16,7 16,17 12,21"/><TextBlock Text="Use global"/></StackPanel></Button>
+                        <Button Style="{StaticResource FpsActionButton}" MinWidth="88" Click="OnDisableClick" ToolTip="Set the FPS limit to 0; keep the selected backend active."><StackPanel Orientation="Horizontal" HorizontalAlignment="Center"><Path Style="{StaticResource FpsBtnIcon}" Data="M12,3 A9,9 0 1 1 12,21 A9,9 0 1 1 12,3 Z M5.6,5.6 L18.4,18.4"/><TextBlock Text="Disable"/></StackPanel></Button>
+                        <Button Style="{StaticResource FpsActionButton}" MinWidth="88" Click="OnDontInjectClick" ToolTip="Skip FPS Limiter 3000-managed injection for this game. Already-running or separately installed injectors may still hook it."><StackPanel Orientation="Horizontal" HorizontalAlignment="Center"><Path Style="{StaticResource FpsBtnIcon}" Data="M12,3 A9,9 0 1 1 12,21 A9,9 0 1 1 12,3 Z M9,9 L15,15 M15,9 L9,15"/><TextBlock Text="Don't inject"/></StackPanel></Button>
+                    </UniformGrid>
+                    <Button x:Name="EditSkIniButton" Style="{StaticResource FpsActionButton}" Margin="3,3,3,0" Click="OnEditGameSpecialKIniClick" Visibility="Collapsed"
+                            ToolTip="Edit this game's SpecialK.ini in a visual editor. The file is created from the global options if it doesn't exist or is empty.">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <Path Style="{StaticResource FpsBtnIcon}" Data="M4,20 L4,16 L16,4 L20,8 L8,20 Z M13,7 L17,11"/>
+                            <TextBlock Text="Edit Special K ini"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            </Expander><!-- RTSS sync belongs directly below the FPS controls. -->
+            <!-- RTSS only -->
+            <Expander IsExpanded="False" Margin="0,6,0,0" Style="{StaticResource FpsSectionExpander}" x:Name="RtssPanel"><Expander.Header><StackPanel Orientation="Horizontal"><Image x:Name="RtssPanelIcon" Stretch="Uniform" Width="18" Height="18" Margin="0,0,13,0" RenderOptions.BitmapScalingMode="HighQuality"/><TextBlock Text="RTSS options" FontWeight="Normal" VerticalAlignment="Center"/>
+                    </StackPanel></Expander.Header><Border>
+                <StackPanel>
+                    <Border Style="{StaticResource FpsRow}"><Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="Force DXGI flip model" VerticalAlignment="Center"/>
+                        <ToggleButton x:Name="FlipModelToggle" Grid.Column="1" Style="{StaticResource ToggleSwitchStyle}" Checked="OnFlipModelToggleChanged" Unchecked="OnFlipModelToggleChanged"/>
+                    </Grid></Border>
+                    <TextBlock Text="Restart the game to apply. Existing RTSS profile values are restored when it closes." Style="{StaticResource FpsMutedText}" TextWrapping="Wrap" Margin="4,-1,4,8"/>
+                    <Border Style="{StaticResource FpsRow}"><Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="190"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="Sync mode" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="SyncModeCombo" Grid.Column="1" SelectionChanged="OnSyncModeChanged"/>
+                    </Grid></Border>
+                    
+                    <Border x:Name="ScanlineTargetPanel" Style="{StaticResource FpsRow}" Visibility="Collapsed"><StackPanel>
+                        <TextBlock Text="Scanline target" Style="{StaticResource FpsMutedText}" Margin="0,0,0,4"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="64"/>
+                            </Grid.ColumnDefinitions>
+                            <Slider x:Name="ScanlineTargetSlider" Grid.Column="0" Minimum="-500" Maximum="500" TickFrequency="1" IsSnapToTickEnabled="True" SmallChange="1" LargeChange="10" ValueChanged="OnScanlineTargetChanged" Margin="0,0,10,0"/>
+                            <TextBox x:Name="ScanlineTargetBox" Grid.Column="1" HorizontalContentAlignment="Center" LostFocus="OnScanlineTargetTextChanged"/>
+                        </Grid>
+                        <Button Content="Reset to default (-1)" HorizontalAlignment="Left" Margin="0,6,0,0" Padding="8,3" Click="OnResetScanlineTargetClick"/>
+                    </StackPanel></Border>
+
+                </StackPanel>
+            </Border>
+
+            </Expander><!-- Special K only -->
+            <Expander IsExpanded="False" Margin="0,6,0,0" x:Name="SpecialKPanel"><Expander.Header><StackPanel Orientation="Horizontal"><Image x:Name="SpecialKPanelIcon" Stretch="Uniform" Width="18" Height="18" Margin="0,0,13,0" RenderOptions.BitmapScalingMode="HighQuality"/><TextBlock Text="Special K" FontWeight="Normal" VerticalAlignment="Center"/></StackPanel></Expander.Header>
+                <StackPanel>
+                    <!-- General -->
+                    <Expander IsExpanded="True" Margin="0,0,0,6"><Expander.Header><TextBlock Text="General"/></Expander.Header>
+                        <Border Style="{StaticResource FpsPlain}"><StackPanel>
+                            <TextBlock Text="Injection" FontWeight="Normal" Margin="0,0,0,4"/>
+                            <TextBlock x:Name="InjGlobalMethodHint" TextWrapping="Wrap" Style="{StaticResource FpsMutedText}" Margin="0,0,0,6"
+                                       Text="Follows the extension-wide injection mode. Local uses a DLL already in the game folder."/>
+                            <RadioButton x:Name="InjUseGlobalRadio" Content="Use global (follows extension-wide mode)" GroupName="SkGameInj" Margin="0,0,0,4" Checked="OnInjectionChanged"/>
+                            <RadioButton x:Name="InjLocalRadio" Content="Local — never start the service (DLL in game folder)" GroupName="SkGameInj" Margin="0,0,0,4" Checked="OnInjectionChanged"/>
+                        </StackPanel></Border>
+                    </Expander>
+
+                    <!-- FPS cap latency settings (mirrors global Special K panel) -->
+                    <Expander IsExpanded="False" Margin="0,0,0,6"><Expander.Header><TextBlock Text="FPS cap latency settings"/></Expander.Header>
+                        <StackPanel>
+                          <Border Style="{StaticResource FpsRow}"><StackPanel>
+                            <TextBlock Text="FPS limiter behavior" FontWeight="Normal" Margin="0,0,0,2"/>
+                            <TextBlock Text="Choose how Special K enforces the FPS cap." TextWrapping="Wrap" Style="{StaticResource FpsMutedText}" Margin="0,0,0,6"/>
+                            <RadioButton x:Name="SkLimiterUseGlobalRadio" Content="Use global" GroupName="SkLimMode" Margin="0,0,0,4" Checked="OnSkLimiterModeChanged"/>
+                            <RadioButton x:Name="SkLimiterNormalRadio" Content="Normal" GroupName="SkLimMode" Margin="0,0,0,4" Checked="OnSkLimiterModeChanged"/>
+                            <RadioButton x:Name="SkLimiterLowLatRadio" Content="Low-Latency" GroupName="SkLimMode" Margin="0,0,0,4" Checked="OnSkLimiterModeChanged"/>
+                            <RadioButton x:Name="SkLimiterLatentRadio" Content="Latent Sync" GroupName="SkLimMode" Margin="0,0,0,4" Checked="OnSkLimiterModeChanged"/>
+                            <RadioButton x:Name="SkLimiterReflexRadio" Content="NVIDIA Reflex" GroupName="SkLimMode" Margin="0,0,0,6" Checked="OnSkLimiterModeChanged"/>
+
+                            </StackPanel></Border>
+                          <Border Style="{StaticResource FpsRow}"><StackPanel>
+                            <TextBlock Text="NVIDIA Reflex" FontWeight="Normal" Margin="0,0,0,2"/>
+                            <TextBlock Text="Only affects games and graphics cards that support Reflex." TextWrapping="Wrap" Style="{StaticResource FpsMutedText}" Margin="0,0,0,6"/>
+                            <RadioButton x:Name="SkReflexUseGlobalRadio" Content="Use global" GroupName="SkGameReflexMode" Margin="0,0,0,4" Checked="OnSkReflexModeChanged"/>
+                            <RadioButton x:Name="SkReflexOffRadio" Content="Off" GroupName="SkGameReflexMode" Margin="0,0,0,4" Checked="OnSkReflexModeChanged"/>
+                            <RadioButton x:Name="SkReflexLowLatRadio" Content="Low Latency" GroupName="SkGameReflexMode" Margin="0,0,0,4" Checked="OnSkReflexModeChanged"/>
+                            <RadioButton x:Name="SkReflexBoostRadio" Content="Low Latency + Boost" GroupName="SkGameReflexMode" Margin="0,0,0,8" Checked="OnSkReflexModeChanged"/>
+
+                            <TextBlock Text="When Reflex engages" Margin="0,0,0,4" Style="{StaticResource FpsMutedText}"/>
+                            <RadioButton x:Name="SkReflexEngUseGlobalRadio" Content="Use global" GroupName="SkGameReflexEng" Margin="0,0,0,4" Checked="OnSkReflexEngChanged"/>
+                            <RadioButton x:Name="SkReflexEngEndRadio" Content="End of Frame (smoother frame pacing)" GroupName="SkGameReflexEng" Margin="0,0,0,4" Checked="OnSkReflexEngChanged"/>
+                            <RadioButton x:Name="SkReflexEngStartRadio" Content="Start of Frame (lower latency)" GroupName="SkGameReflexEng" Margin="0,0,0,8" Checked="OnSkReflexEngChanged"/>
+
+                            </StackPanel></Border>
+                          <Border Style="{StaticResource FpsRow}"><StackPanel>
+                            <TextBlock Text="Frame pacing" FontWeight="Normal" Margin="0,0,0,2"/>
+                            <TextBlock Text="Power Saving reduces busy-waiting; Max. Accuracy favors tighter pacing and may use more CPU." TextWrapping="Wrap" Style="{StaticResource FpsMutedText}" Margin="0,0,0,6"/>
+                            <RadioButton x:Name="SkEnergyUseGlobalRadio" Content="Use global" GroupName="SkGameEnergy" Margin="0,0,0,4" Checked="OnSkEnergyChanged"/>
+                            <RadioButton x:Name="SkEnergyDefaultRadio" Content="Default" GroupName="SkGameEnergy" Margin="0,0,0,4" Checked="OnSkEnergyChanged"/>
+                            <RadioButton x:Name="SkEnergyPowerRadio" Content="Power Saving" GroupName="SkGameEnergy" Margin="0,0,0,4" Checked="OnSkEnergyChanged"/>
+                            <RadioButton x:Name="SkEnergyMaxRadio" Content="Max. Accuracy" GroupName="SkGameEnergy" Margin="0,0,0,4" Checked="OnSkEnergyChanged"/>
+                            <RadioButton x:Name="SkEnergyCustomRadio" Content="Custom" GroupName="SkGameEnergy" Margin="0,0,0,6" Checked="OnSkEnergyChanged"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <StackPanel Margin="0,0,8,0">
+                                    <TextBlock Text="Busy-wait percent" Margin="0,0,0,3" Style="{StaticResource FpsMutedText}"/>
+                                    <TextBox x:Name="SkBusyWaitPercentBox" Width="100" LostFocus="OnSkBusyWaitChanged" ToolTip="Special K setting: BusyWaitPercent"/>
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="Busy-wait bias" Margin="0,0,0,3" Style="{StaticResource FpsMutedText}"/>
+                                    <TextBox x:Name="SkBusyWaitBiasBox" Width="100" LostFocus="OnSkBusyWaitChanged" ToolTip="Special K setting: BusyWaitBias"/>
+                                </StackPanel>
+                            </StackPanel>
+                          </StackPanel></Border>
+                        </StackPanel>
+                    </Expander>
+
+                    <!-- Compatibility -->
+                    <Expander IsExpanded="False" Margin="0,0,0,6"><Expander.Header><TextBlock Text="Compatibility"/></Expander.Header>
+                        <StackPanel>
+                            <Border Style="{StaticResource FpsRow}"><Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="Window behavior" VerticalAlignment="Center" Style="{StaticResource FpsMutedText}" Margin="0,0,0,4"/>
+                            <ComboBox x:Name="SkWindowBehaviorCombo" Grid.Column="1" SelectionChanged="OnSkWindowBehaviorChanged"/>
+                            </Grid></Border>
+                            <Border Style="{StaticResource FpsRow}"><Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="Disable Steam API" VerticalAlignment="Center"/>
+                                <ToggleButton x:Name="SteamSilentToggle" Grid.Column="1" Style="{StaticResource ToggleSwitchStyle}" Checked="OnSteamSilentChanged" Unchecked="OnSteamSilentChanged"/>
+                            </Grid></Border>
+                            <Border Style="{StaticResource FpsRow}"><Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="Disable controller vibration" VerticalAlignment="Center" ToolTip="Special K setting: Input.Gamepad / DisableRumble"/>
+                                <ToggleButton x:Name="SkDisableRumbleToggle" Grid.Column="1" Style="{StaticResource ToggleSwitchStyle}" Checked="OnSpecialKCompatibilityToggleChanged" Unchecked="OnSpecialKCompatibilityToggleChanged"/>
+                            </Grid></Border>
+                            <Border Style="{StaticResource FpsRow}"><Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="Preload Steam overlay" VerticalAlignment="Center" ToolTip="Special K setting: Steam.System / PreLoadSteamOverlay"/>
+                                <ToggleButton x:Name="SkPreloadOverlayToggle" Grid.Column="1" Style="{StaticResource ToggleSwitchStyle}" Checked="OnSpecialKCompatibilityToggleChanged" Unchecked="OnSpecialKCompatibilityToggleChanged"/>
+                            </Grid></Border>
+                            <Border Style="{StaticResource FpsRow}"><Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="Disable Steam overlay" VerticalAlignment="Center" ToolTip="Special K setting: Steam.System / NoDrawOverlay"/>
+                                <ToggleButton x:Name="SkDisableOverlayToggle" Grid.Column="1" Style="{StaticResource ToggleSwitchStyle}" Checked="OnSpecialKCompatibilityToggleChanged" Unchecked="OnSpecialKCompatibilityToggleChanged"/>
+                            </Grid></Border>
+                            <Border Style="{StaticResource FpsRow}"><Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="Force flip discard model" VerticalAlignment="Center" ToolTip="Special K setting: Render.DXGI / UseFlipDiscard"/>
+                                <ToggleButton x:Name="SkUseFlipDiscardToggle" Grid.Column="1" Style="{StaticResource ToggleSwitchStyle}" Checked="OnSpecialKCompatibilityToggleChanged" Unchecked="OnSpecialKCompatibilityToggleChanged"/>
+                            </Grid></Border>
+                            <WrapPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                <Button Content="Use global Compatibility settings" Padding="8,3" Margin="0,0,8,4" Click="OnUseGlobalSpecialKCompatibilityClick"/>
+                                <Button Content="Edit SpecialK.ini" Padding="8,3" Margin="0,0,8,4" Click="OnEditGameSpecialKIniClick"
+                                        ToolTip="Edit this game's SpecialK.ini in a visual editor. The file is created from the global options if it doesn't exist or is empty."/>
+                                <Button Content="Open game SpecialK.ini" Padding="8,3" Margin="0,0,0,4" Click="OnOpenGameSpecialKIniClick"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
+            </Expander>
+            <Expander IsExpanded="False" Margin="0,6,0,0" Style="{StaticResource FpsSectionExpander}" x:Name="PerGameRefreshPanel"><Expander.Header><StackPanel Orientation="Horizontal"><Path Data="{DynamicResource UpdateIconGeometry}" Stroke="{DynamicResource ReShadeText}" StrokeThickness="1.6" Stretch="Uniform" Width="18" Height="18" Margin="0,0,13,0"/><TextBlock Text="Manage refresh rate" FontWeight="Normal" VerticalAlignment="Center"/>
+                    </StackPanel></Expander.Header><Border>
+                <StackPanel>
+                    <StackPanel x:Name="RefreshRatesRows">
+                    <Border Style="{StaticResource FpsRow}"><StackPanel>
+                    <TextBlock Margin="0,0,0,2" Text="Low Hz VRR"/>
+                    <TextBlock TextWrapping="Wrap" Style="{StaticResource FpsMutedText}" Margin="0,0,0,8" Text="Optional refresh-rate switch at low FPS."/>
+                    <RadioButton x:Name="VrrUseGlobalRadio" Content="Use global setting" GroupName="GameVrr" Margin="0,0,0,4" Checked="OnVrrChanged"/>
+                    <RadioButton x:Name="VrrEnabledRadio" Content="Enabled for this game" GroupName="GameVrr" Margin="0,0,0,4" Checked="OnVrrChanged"/>
+                    <RadioButton x:Name="VrrDisabledRadio" Content="Disabled for this game" GroupName="GameVrr" Margin="0,0,0,8" Checked="OnVrrChanged"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="Target Hz" VerticalAlignment="Center" Margin="0,0,8,0" Opacity="0.85"/>
+                        <TextBox x:Name="VrrTargetHzBox" Width="64" Margin="0,0,16,0" LostFocus="OnVrrOverrideChanged"/>
+                        <TextBlock Text="FPS threshold" VerticalAlignment="Center" Margin="0,0,8,0" Opacity="0.85"/>
+                        <TextBox x:Name="VrrThresholdBox" Width="64" LostFocus="OnVrrOverrideChanged"/>
+                    </StackPanel>
+                    </StackPanel></Border>
+                    <Border Style="{StaticResource FpsRow}"><StackPanel>
+                    <TextBlock Text="Display refresh rate" Margin="0,0,0,6"/>
+                    <ComboBox x:Name="ForcedRefreshCombo" SelectionChanged="OnForcedRefreshChanged"/>
+                    <TextBlock Style="{StaticResource FpsMutedText}" Margin="0,4,0,0" TextWrapping="Wrap" Text="Optional fixed Hz for this game."/>
+                    </StackPanel></Border>
+                    <Border Style="{StaticResource FpsRow}"><StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Exact Sync Hz" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBox x:Name="ExactSyncHzBox" Width="95" HorizontalAlignment="Left" LostFocus="OnExactSyncHzChanged" ToolTip="Optional per-game exact signal Hz, e.g. 29.9001. Blank uses the monitor's global exact Hz (or automatic detection). Does not change the Windows display mode."/>
+                        
+                    </StackPanel></Border>
+                </StackPanel>
+                    <Border x:Name="FreeSyncRow" Style="{StaticResource FpsRow}"><StackPanel VerticalAlignment="Center">
+                    <CheckBox x:Name="DisableFreeSyncCheck" Content="Disable AMD FreeSync for this game" Checked="OnFreeSyncChanged" Unchecked="OnFreeSyncChanged"/>
+                    <TextBlock x:Name="FreeSyncStatusText" Margin="2,3,0,0" Style="{StaticResource FpsMutedText}" TextWrapping="Wrap"/>
+                    </StackPanel></Border>
+                </StackPanel>
+            </Border>
+
+            </Expander><!-- VRR refresh-rate switching -->
+
+            <DockPanel Margin="0,12,0,0" LastChildFill="False">
+                <Button DockPanel.Dock="Left" Padding="12,7" Margin="0,0,8,0" Click="OnGlobalSettingsClick"><StackPanel Orientation="Horizontal"><Path Data="{DynamicResource GearIconGeometry}" Stroke="{DynamicResource ReShadeText}" StrokeThickness="1.6" Stretch="Uniform" Width="16" Height="16" Margin="0,0,8,0"/><TextBlock Text="Global settings"/></StackPanel></Button><Button Content="Close" MinWidth="88" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="OnCloseClick"/>
+            </DockPanel>
+
+            </StackPanel>
+    </ScrollViewer>
+</UserControl>
