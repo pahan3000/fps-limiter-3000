@@ -17,6 +17,11 @@ This is a fork of [mjd4219/playnite-fps-limiter](https://github.com/mjd4219/play
 - **RTSS overlay preset** and RTSS profile access setup, so normal non-admin Playnite works
 - Hotkeys and a per-game settings panel
 
+## Screenshots
+![Per-game panel](screenshots/game_settings_rtss.png)
+![Per-game panel](screenshots/game_settings_special_k.png)
+![Global Setitngs](screenshots/global_settings_1.png)
+
 ## Requirements
 
 - Playnite
