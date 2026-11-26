@@ -1,0 +1,12 @@
+AddonId: FPSLimiter_08c6a58f-461c-4629-850c-d07a820e26c1
+Packages:
+  - Version: 1.0.0
+    RequiredApiVersion: 6.16.0
+    ReleaseDate: 2026-11-26
+    PackageUrl: https://github.com/pahan3000/playnite-fps-limiter/releases/download/v1.0.0/FPSLimiter_08c6a58f-461c-4629-850c-d07a820e26c1_1_0_0.pext
+    Changelog:
+      - First release of FPS Limiter 3000, a fork of mjd4219/playnite-fps-limiter
+      - Added a Special K backend with SpecialK.ini creation and an ini editor
+      - Added Special K updates, including local Special K DLLs in games
+      - Added sync modes (Front Edge, Scanline, Latent Sync, Reflex), VRR and refresh-rate handling
+      - Added per-monitor global limits and an RTSS overlay preset
