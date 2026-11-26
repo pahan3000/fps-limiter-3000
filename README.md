@@ -7,7 +7,7 @@ This is a fork of [mjd4219/playnite-fps-limiter](https://github.com/mjd4219/play
 ## Features
 
 - **Two backends:** RTSS and Special K, chosen globally or per game
-- **Global and per-game FPS limits**, separate for Desktop and Fullscreen mode, with editable presets
+- **Global and per-game FPS limits**
 - **Sync modes:** Async / Back Edge, Front Edge, Scanline Sync (including half), Special K Latent Sync, NVIDIA Reflex
 - **Reflex markers** control
 - **Per-monitor global limits** and refresh-rate matching
