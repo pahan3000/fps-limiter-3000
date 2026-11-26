@@ -63,6 +63,7 @@
     <Compile Include="RtssOverlayPreset.cs" />
     <Compile Include="OswaldFont.cs" />
     <Compile Include="BrandIcons.cs" />
+    <Compile Include="ExtensionUpdateService.cs" />
     <Compile Include="FPSLimiter.cs" />
     <Compile Include="FreeSyncSessionManager.cs" />
     <Compile Include="VrrDisplayRouter.cs" />
@@ -87,6 +88,7 @@
     <Compile Include="SpecialKConfigEditor.cs" />
     <Compile Include="SpecialKIniCatalog.cs" />
     <Compile Include="SpecialKLimiterBackend.cs" />
+    <Compile Include="SpecialKLocalWrapper.cs" />
     <Compile Include="SpecialKUpdateService.cs" />
   </ItemGroup>
   <ItemGroup>

@@ -513,6 +513,92 @@ namespace FPSLimiter
             catch { return false; }
         }
 
+        private static long LargestVisibleWindowArea(int processId)
+        {
+            long bestArea = 0;
+            EnumWindows((hwnd, ignored) =>
+            {
+                uint pid;
+                GetWindowThreadProcessId(hwnd, out pid);
+                if (pid != processId || !IsWindowVisible(hwnd)) return true;
+                WindowRect rect;
+                if (!GetWindowRect(hwnd, out rect)) return true;
+                long width = (long)rect.Right - rect.Left;
+                long height = (long)rect.Bottom - rect.Top;
+                if (width > 100 && height > 100 && width * height > bestArea) bestArea = width * height;
+                return true;
+            }, IntPtr.Zero);
+            return bestArea;
+        }
+
+        /// <summary>
+        /// The process that really owns the game window. Playnite's started-process id is often a launcher stub
+        /// (Steam / Epic / UE4 launchers) with no window of its own, so when it has none the game's own process is
+        /// looked up by executable name and install folder and the one with the largest visible window wins.
+        /// Falls back to <paramref name="trackedProcessId"/> when nothing better is found.
+        /// </summary>
+        public static int FindGameWindowProcess(int trackedProcessId, string executablePath, string installDirectory)
+        {
+            string ignored;
+            return FindGameWindowProcess(trackedProcessId, executablePath, installDirectory, out ignored);
+        }
+
+        public static int FindGameWindowProcess(int trackedProcessId, string executablePath, string installDirectory, out string detail)
+        {
+            detail = null;
+            try
+            {
+                var trackedArea = trackedProcessId > 0 ? LargestVisibleWindowArea(trackedProcessId) : 0;
+                if (trackedArea > 0) { detail = "tracked pid has a window"; return trackedProcessId; }
+
+                var exeName = string.IsNullOrWhiteSpace(executablePath)
+                    ? null : System.IO.Path.GetFileNameWithoutExtension(executablePath);
+                // "DarksidersGenesis-Win64-Shipping" -> "DarksidersGenesis" also matches the launcher stub.
+                var stem = exeName;
+                if (stem != null && stem.IndexOf('-') > 3) stem = stem.Substring(0, stem.IndexOf('-'));
+                string root = null;
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(installDirectory))
+                        root = System.IO.Path.GetFullPath(installDirectory).TrimEnd('\\', '/') + System.IO.Path.DirectorySeparatorChar;
+                }
+                catch { }
+
+                int best = 0, matched = 0, withWindow = 0;
+                long bestArea = 0;
+                foreach (var process in Process.GetProcesses())
+                {
+                    using (process)
+                    {
+                        try
+                        {
+                            var name = process.ProcessName;
+                            bool match = exeName != null &&
+                                         (string.Equals(name, exeName, StringComparison.OrdinalIgnoreCase) ||
+                                          (stem != null && stem.Length > 3 && name.StartsWith(stem, StringComparison.OrdinalIgnoreCase)));
+                            if (!match && root != null)
+                            {
+                                string file = null;
+                                try { file = process.MainModule?.FileName; } catch { }
+                                match = !string.IsNullOrWhiteSpace(file) &&
+                                        file.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+                            }
+                            if (!match) continue;
+                            matched++;
+                            var area = LargestVisibleWindowArea(process.Id);
+                            if (area > 0) withWindow++;
+                            if (area > bestArea) { bestArea = area; best = process.Id; }
+                        }
+                        catch { /* protected process / exited meanwhile */ }
+                    }
+                }
+                detail = "tracked pid " + trackedProcessId + " has no window; " + matched + " matching process(es), " +
+                         withWindow + " with a window (exe=" + (exeName ?? "?") + ", dir=" + (root ?? "?") + ")";
+                return best > 0 ? best : trackedProcessId;
+            }
+            catch (Exception e) { detail = "lookup failed: " + e.Message; return trackedProcessId; }
+        }
+
         /// <summary>
         /// Presses Ctrl+Shift+key in the process's window (bringing it to the front first). Waits briefly for any
         /// modifier keys the user is still holding so the game sees exactly Ctrl+Shift+key. Blocking: call from a
@@ -520,10 +606,17 @@ namespace FPSLimiter
         /// </summary>
         public static bool SendCtrlShiftKeyToProcess(int processId, char key)
         {
+            string ignored;
+            return SendCtrlShiftKeyToProcess(processId, key, out ignored);
+        }
+
+        public static bool SendCtrlShiftKeyToProcess(int processId, char key, out string failure)
+        {
+            failure = null;
             try
             {
                 var hwnd = FindLargestVisibleWindow(processId);
-                if (hwnd == IntPtr.Zero) return false;
+                if (hwnd == IntPtr.Zero) { failure = "pid " + processId + " has no visible window"; return false; }
                 // The game must really be in front, otherwise Special K never sees the keys.
                 bool inFront = false;
                 for (int attempt = 0; attempt < 6 && !inFront; attempt++)
@@ -535,7 +628,14 @@ namespace FPSLimiter
                     SetForegroundWindow(hwnd);
                     System.Threading.Thread.Sleep(150);
                 }
-                if (!inFront) return false;
+                if (!inFront)
+                {
+                    uint fgPid = 0;
+                    var fg = GetForegroundWindow();
+                    if (fg != IntPtr.Zero) GetWindowThreadProcessId(fg, out fgPid);
+                    failure = "window of pid " + processId + " would not take focus (foreground is pid " + fgPid + ")";
+                    return false;
+                }
 
                 // Let go of Ctrl/Alt/Shift first (e.g. the extension hotkey that triggered this).
                 for (int i = 0; i < 30; i++)
@@ -560,7 +660,7 @@ namespace FPSLimiter
                 }
                 return true;
             }
-            catch { return false; }
+            catch (Exception e) { failure = "exception: " + e.Message; return false; }
         }
 
         /// <summary>Returns null if the game has not yet created a suitable window.</summary>

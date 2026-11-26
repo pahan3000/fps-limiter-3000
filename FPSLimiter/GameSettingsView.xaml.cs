@@ -7,6 +7,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -90,9 +91,11 @@ namespace FPSLimiter
             PopulateSpecialKCompatibilityOptions();
             RefreshFromService();
             suppressEvents = false;
+            ApplySpecialKOverrideState();
 
             Loaded += (_, __) =>
             {
+                ApplySpecialKOverrideState();
                 limiterService.Settings.PropertyChanged -= OnLimiterSettingsPropertyChanged;
                 limiterService.Settings.PropertyChanged += OnLimiterSettingsPropertyChanged;
                 RefreshScanlineTargetUi();
@@ -153,6 +156,23 @@ namespace FPSLimiter
         }
 
 
+        /// <summary>
+        /// Mirrors the global "Override Special K settings" switch: when it is off, the Special K latency and
+        /// compatibility options are greyed out here just like in the global settings panel.
+        /// Injection and the "Edit/Open SpecialK.ini" buttons stay available.
+        /// </summary>
+        private void ApplySpecialKOverrideState()
+        {
+            try
+            {
+                var enabled = limiterService?.Settings?.ApplySpecialKSettingsToExistingProfiles ?? false;
+                if (SkLatencyOptionsPanel != null) SkLatencyOptionsPanel.IsEnabled = enabled;
+                if (SkCompatOptionsPanel != null) SkCompatOptionsPanel.IsEnabled = enabled;
+                if (SkUseGlobalCompatButton != null) SkUseGlobalCompatButton.IsEnabled = enabled;
+            }
+            catch { /* cosmetic */ }
+        }
+
         private void OnLimiterSettingsPropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             if (e == null) return;
@@ -162,6 +182,11 @@ namespace FPSLimiter
             {
                 AppearancePalette.Apply(this, limiterService.Settings.ThemePreset, limiterService.Settings.GlassEffect);
             AppearancePalette.ApplyUnifiedSectionGlass(this, limiterService.Settings.ThemePreset, limiterService.Settings.GlassEffect);
+            }
+            if (string.IsNullOrEmpty(e.PropertyName) ||
+                e.PropertyName == nameof(FPSLimiterSettings.ApplySpecialKSettingsToExistingProfiles))
+            {
+                Dispatcher.BeginInvoke(new Action(ApplySpecialKOverrideState));
             }
             if (e.PropertyName != nameof(FPSLimiterSettings.RtssScanlineSyncTarget)) return;
             Dispatcher.BeginInvoke(new Action(() =>
@@ -174,6 +199,7 @@ namespace FPSLimiter
         // Keep this strictly in the game-settings UI; LimiterService owns the RTSS logic.
         private bool? showingRefreshRatePresets;
         private FpsSyncMode? showingPresetSyncMode;
+        private string showingPresetMonitor;
 
         private bool UseScanlineRefreshRates()
         {
@@ -201,9 +227,15 @@ namespace FPSLimiter
             if (limiterService == null || PresetList == null) return;
             var scanline = IsFixedRefreshForGames() && UseScanlineRefreshRates();
             var currentSync = games.Count == 0 ? FpsSyncMode.Async : limiterService.GetEffectiveGameSyncMode(games[0]);
-            if (showingRefreshRatePresets == scanline && showingPresetSyncMode == currentSync && PresetList.Items.Count != 0) return;
+            // The presets belong to the display the game uses, so a change of display must rebuild them.
+            var monitorKey = games.Count > 0
+                ? limiterService.GetGameMonitorDeviceName(games[0])
+                : MonitorManager.PrimaryDeviceName;
+            if (showingRefreshRatePresets == scanline && showingPresetSyncMode == currentSync &&
+                string.Equals(showingPresetMonitor, monitorKey, StringComparison.OrdinalIgnoreCase) && PresetList.Items.Count != 0) return;
             showingRefreshRatePresets = scanline;
             showingPresetSyncMode = currentSync;
+            showingPresetMonitor = monitorKey;
             PresetList.Items.Clear();
             if (FpsCapHeading != null)
                 FpsCapHeading.Text = scanline ? "Display refresh (Scanline)" : "FPS cap";
@@ -301,10 +333,9 @@ namespace FPSLimiter
                 var manuallyDisabled = profile?.DisableFreeSyncForGame == true;
                 DisableFreeSyncCheck.IsChecked = manuallyDisabled || autoScanline;
                 DisableFreeSyncCheck.IsEnabled = !autoScanline;
-                // FreeSync control only appears when this display can actually use it (AMD + working helper).
-                var displayVendor = limiterService.GetGameVrrVendor(game);
-                var actual = (displayVendor == VrrDisplayVendor.Nvidia || displayVendor == VrrDisplayVendor.Intel)
-                    ? null : limiterService.ReadFreeSyncEnabled();
+                // AMD FreeSync control only appears when an AMD GPU is installed (hidden on NVIDIA-only PCs,
+                // still shown on laptops with both) and the helper can actually read the state.
+                var actual = limiterService.HasAmdGpu ? limiterService.ReadFreeSyncEnabled() : null;
                 var freeSyncUsable = actual.HasValue;
                 DisableFreeSyncCheck.Visibility = freeSyncUsable ? Visibility.Visible : Visibility.Collapsed;
                 FreeSyncStatusText.Visibility = freeSyncUsable ? Visibility.Visible : Visibility.Collapsed;
@@ -525,7 +556,9 @@ namespace FPSLimiter
 
             var item = GamePreferredMonitorCombo.SelectedItem as ComboBoxItem;
             limiterService.SetGamePreferredMonitor(games, item?.Tag as string ?? string.Empty);
+            showingPresetMonitor = null; // force the presets of the newly selected display to show right away
             BuildPresets();
+            RefreshPresetSelection();
             RefreshFromService();
         }
 
@@ -934,7 +967,7 @@ namespace FPSLimiter
                         modeLabel = "Selective";
                         break;
                 }
-                InjUseGlobalRadio.Content = "Use global (" + modeLabel + ")";
+                InjUseGlobalRadio.Content = "Global";
                 if (InjGlobalMethodHint != null)
                     InjGlobalMethodHint.Text = "Currently: " + modeLabel + " — follows the extension-wide injection mode.";
             }
@@ -1275,6 +1308,35 @@ namespace FPSLimiter
                 ? GameSpecialKInjectionPreference.Local
                 : GameSpecialKInjectionPreference.UseGlobal;
             limiterService.SetGameSpecialKInjection(games, pref);
+
+            // Picking Local must put the wrapper DLL + ini into the game folder right away (not only at the next launch);
+            // picking "use global" takes an installed wrapper back again.
+            var previousCursor = Mouse.OverrideCursor;
+            Mouse.OverrideCursor = Cursors.Wait;
+            string report = null;
+            var anyFailed = false;
+            try
+            {
+                foreach (var game in games)
+                {
+                    var msg = limiterService.ApplyLocalInjectionChoice(game, out var failed);
+                    if (failed) anyFailed = true;
+                    if (!string.IsNullOrWhiteSpace(msg))
+                        report = report == null ? msg : report + Environment.NewLine + msg;
+                }
+            }
+            finally
+            {
+                Mouse.OverrideCursor = previousCursor;
+            }
+
+            if (!string.IsNullOrWhiteSpace(report))
+            {
+                if (InjGlobalMethodHint != null) InjGlobalMethodHint.Text = report;
+                if (anyFailed)
+                    MessageBox.Show("Special K local injection could not be set up:\n\n" + report,
+                        "FPS Limiter 3000", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
 
     }

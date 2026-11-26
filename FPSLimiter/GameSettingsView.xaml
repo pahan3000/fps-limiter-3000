@@ -251,15 +251,15 @@
                         <Border Style="{StaticResource FpsPlain}"><StackPanel>
                             <TextBlock Text="Injection" FontWeight="Normal" Margin="0,0,0,4"/>
                             <TextBlock x:Name="InjGlobalMethodHint" TextWrapping="Wrap" Style="{StaticResource FpsMutedText}" Margin="0,0,0,6"
-                                       Text="Follows the extension-wide injection mode. Local uses a DLL already in the game folder."/>
-                            <RadioButton x:Name="InjUseGlobalRadio" Content="Use global (follows extension-wide mode)" GroupName="SkGameInj" Margin="0,0,0,4" Checked="OnInjectionChanged"/>
-                            <RadioButton x:Name="InjLocalRadio" Content="Local — never start the service (DLL in game folder)" GroupName="SkGameInj" Margin="0,0,0,4" Checked="OnInjectionChanged"/>
+                                       Text="Global follows the extension-wide injection mode. Local copies Special K into the game's folder as a DLL."/>
+                            <RadioButton x:Name="InjUseGlobalRadio" Content="Global" GroupName="SkGameInj" Margin="0,0,0,4" Checked="OnInjectionChanged"/>
+                            <RadioButton x:Name="InjLocalRadio" Content="Local — inject Special K as a DLL into the game's folder" GroupName="SkGameInj" Margin="0,0,0,4" Checked="OnInjectionChanged"/>
                         </StackPanel></Border>
                     </Expander>
 
                     <!-- FPS cap latency settings (mirrors global Special K panel) -->
                     <Expander IsExpanded="False" Margin="0,0,0,6"><Expander.Header><TextBlock Text="FPS cap latency settings"/></Expander.Header>
-                        <StackPanel>
+                        <StackPanel x:Name="SkLatencyOptionsPanel">
                           <Border Style="{StaticResource FpsRow}"><StackPanel>
                             <TextBlock Text="FPS limiter behavior" FontWeight="Normal" Margin="0,0,0,2"/>
                             <TextBlock Text="Choose how Special K enforces the FPS cap." TextWrapping="Wrap" Style="{StaticResource FpsMutedText}" Margin="0,0,0,6"/>
@@ -309,6 +309,7 @@
                     <!-- Compatibility -->
                     <Expander IsExpanded="False" Margin="0,0,0,6"><Expander.Header><TextBlock Text="Compatibility"/></Expander.Header>
                         <StackPanel>
+                            <StackPanel x:Name="SkCompatOptionsPanel">
                             <Border Style="{StaticResource FpsRow}"><Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions>
                             <TextBlock Text="Window behavior" VerticalAlignment="Center" Style="{StaticResource FpsMutedText}" Margin="0,0,0,4"/>
@@ -339,8 +340,9 @@
                                 <TextBlock Text="Force flip discard model" VerticalAlignment="Center" ToolTip="Special K setting: Render.DXGI / UseFlipDiscard"/>
                                 <ToggleButton x:Name="SkUseFlipDiscardToggle" Grid.Column="1" Style="{StaticResource ToggleSwitchStyle}" Checked="OnSpecialKCompatibilityToggleChanged" Unchecked="OnSpecialKCompatibilityToggleChanged"/>
                             </Grid></Border>
+                            </StackPanel>
                             <WrapPanel Orientation="Horizontal" Margin="0,3,0,0">
-                                <Button Content="Use global Compatibility settings" Padding="8,3" Margin="0,0,8,4" Click="OnUseGlobalSpecialKCompatibilityClick"/>
+                                <Button x:Name="SkUseGlobalCompatButton" Content="Use global Compatibility settings" Padding="8,3" Margin="0,0,8,4" Click="OnUseGlobalSpecialKCompatibilityClick"/>
                                 <Button Content="Edit SpecialK.ini" Padding="8,3" Margin="0,0,8,4" Click="OnEditGameSpecialKIniClick"
                                         ToolTip="Edit this game's SpecialK.ini in a visual editor. The file is created from the global options if it doesn't exist or is empty."/>
                                 <Button Content="Open game SpecialK.ini" Padding="8,3" Margin="0,0,0,4" Click="OnOpenGameSpecialKIniClick"/>

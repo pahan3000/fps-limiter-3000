@@ -195,6 +195,22 @@ namespace FPSLimiter
             return info;
         }
 
+        /// <summary>
+        /// The Direct3D / OpenGL API the exe links against (D3D12 > D3D11 > D3D10 > D3D9 > OpenGL),
+        /// Unknown when the import table says nothing. Used to pick the local Special K wrapper name.
+        /// </summary>
+        public static ApiKind DetectLinkedApi(string exePath)
+        {
+            if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath)) return ApiKind.Unknown;
+            var i = ReadImports(exePath);
+            if (i.D3D12) return ApiKind.D3D12;
+            if (i.D3D11) return ApiKind.D3D11;
+            if (i.D3D10) return ApiKind.D3D10;
+            if (i.D3D9) return ApiKind.D3D9;
+            if (i.OpenGL) return ApiKind.OpenGL;
+            return ApiKind.Unknown;
+        }
+
         private static bool LooksLikeBrowserEngine(string dir)
         {
             // Chromium / CEF / Electron apps carry Vulkan strings (ANGLE, Dawn) without being Vulkan games.

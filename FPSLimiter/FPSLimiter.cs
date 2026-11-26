@@ -63,6 +63,7 @@ namespace FPSLimiter
         private FPSLimiterSettingsViewModel settings;
         private LimiterService limiterService;
         private SpecialKUpdateService specialKUpdateService;
+        private ExtensionUpdateService extensionUpdateService;
         private HotkeyManager hotkeyManager;
         private System.Windows.Threading.DispatcherTimer monitorTimer;
 
@@ -100,6 +101,7 @@ namespace FPSLimiter
             settings = new FPSLimiterSettingsViewModel(this, api);
             limiterService = new LimiterService(api, settings);
             specialKUpdateService = new SpecialKUpdateService(settings, limiterService, GetPluginUserDataPath(), api);
+            extensionUpdateService = new ExtensionUpdateService(settings, limiterService, api);
             // Seed Global\default_SpecialK.ini on load so toggles are ready before first launch.
             try { limiterService.SyncSpecialKGlobalDefaults(); } catch { }
             try { BrandIcons.EnsureExtracted(GetPluginUserDataPath()); } catch { try { BrandIcons.EnsureExtracted(); } catch { } }
@@ -145,6 +147,18 @@ namespace FPSLimiter
                 catch (Exception ex)
                 {
                     logger.Error(ex, "Scheduled Special K update check failed.");
+                }
+            });
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await extensionUpdateService.CheckIfDueAsync();
+                }
+                catch (Exception ex)
+                {
+                    logger.Error(ex, "Scheduled FPS Limiter 3000 update check failed.");
                 }
             });
 
@@ -514,6 +528,10 @@ namespace FPSLimiter
 
         public Task UpdateSpecialKNowAsync() => specialKUpdateService.UpdateNowAsync();
 
+        public Task CheckExtensionUpdatesNowAsync() => extensionUpdateService.CheckNowAsync();
+
+        public Task UpdateExtensionNowAsync() => extensionUpdateService.UpdateNowAsync();
+
         public Task CheckSpecialKUpdatesNowAsync()
         {
             return specialKUpdateService.CheckNowAsync();
@@ -594,7 +612,7 @@ namespace FPSLimiter
             // as RUNNING until the display/driver call returns.
             var game = args.Game;
 
-            limiterService.NotifyGameStopped(game.Id);
+            limiterService.NotifyGameStopped(game.Id, true);
             RefreshTopBarIconOnUi();
 
             System.Threading.Tasks.Task.Run(() =>

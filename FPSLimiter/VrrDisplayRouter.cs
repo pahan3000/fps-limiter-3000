@@ -45,4 +45,65 @@ namespace FPSLimiter
             return VrrDisplayVendor.Unknown;
         }
     }
+
+    /// <summary>
+    /// Which GPU vendors are physically installed in this machine (not which one drives a given display).
+    /// Used to decide whether AMD-only options such as the FreeSync toggle make sense at all:
+    /// NVIDIA-only / Intel-only PCs hide them, a laptop with an AMD and an NVIDIA GPU keeps them.
+    /// </summary>
+    internal static class GpuInventory
+    {
+        private static bool? hasAmdGpu;
+        private static readonly object gate = new object();
+
+        /// <summary>True when at least one AMD/ATI GPU is present. Cached after the first call.</summary>
+        public static bool HasAmdGpu
+        {
+            get
+            {
+                lock (gate)
+                {
+                    if (!hasAmdGpu.HasValue) hasAmdGpu = Detect();
+                    return hasAmdGpu.Value;
+                }
+            }
+        }
+
+        private static bool Detect()
+        {
+            try
+            {
+                using (var searcher = new System.Management.ManagementObjectSearcher(
+                    "SELECT Name, PNPDeviceID, AdapterCompatibility FROM Win32_VideoController"))
+                using (var results = searcher.Get())
+                {
+                    foreach (System.Management.ManagementBaseObject gpu in results)
+                    {
+                        var identity = string.Join(" ",
+                            Convert.ToString(gpu["PNPDeviceID"]),
+                            Convert.ToString(gpu["Name"]),
+                            Convert.ToString(gpu["AdapterCompatibility"]));
+                        if (IsAmdGpu(identity)) return true;
+                    }
+                }
+                return false;
+            }
+            catch
+            {
+                // Could not enumerate adapters: don't hide the option on a guess. The FreeSync helper
+                // still has to report a usable state before anything is shown.
+                return true;
+            }
+        }
+
+        // VEN_1002 = AMD/ATI GPUs. (VEN_1022 is AMD's chipset/CPU vendor id, not a GPU, so it is not matched.)
+        private static bool IsAmdGpu(string identity)
+        {
+            if (string.IsNullOrWhiteSpace(identity)) return false;
+            return identity.IndexOf("VEN_1002", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   identity.IndexOf("Radeon", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   identity.IndexOf("Advanced Micro Devices", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   identity.IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+    }
 }

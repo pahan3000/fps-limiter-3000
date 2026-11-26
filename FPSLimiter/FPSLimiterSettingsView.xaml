@@ -383,55 +383,110 @@
             <!-- Updates -->
             <Expander x:Name="UpdatesSection" IsExpanded="False" Expanded="MainSection_Expanded" Margin="0,0,0,6">
                 <Expander.Header><StackPanel Orientation="Horizontal"><Path Data="{DynamicResource UpdateIconGeometry}" Stroke="{DynamicResource ReShadeText}" StrokeThickness="1.6" Stretch="Uniform" Width="18" Height="18" Margin="0,0,13,0"/><TextBlock Text="Updates" FontWeight="Normal" VerticalAlignment="Center"/></StackPanel></Expander.Header>
-                <StackPanel Margin="0,5,0,0">
-                    <Border Style="{StaticResource DownloadCard}">
-                        <Button x:Name="CheckSpecialKUpdatesButton" Style="{StaticResource CardSecondaryButton}"
-                                Click="CheckSpecialKUpdatesNow_Click" HorizontalAlignment="Left"
-                                MinWidth="166" MinHeight="34" ToolTip="Checks the selected Special K update channel (Nightly or Discord).">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Data="{DynamicResource SearchIconGeometry}" Stroke="{DynamicResource ReShadeText}"
-                                      StrokeThickness="1.6" Stretch="Uniform" Width="18" Height="18" Margin="0,0,8,0"/>
-                                <TextBlock Text="Check for Special K updates" VerticalAlignment="Center"/>
+                <StackPanel Margin="0,0,0,0">
+                <Expander x:Name="ExtensionUpdatesSubSection" IsExpanded="False" Expanded="UpdatesSubSection_Expanded" Margin="0,5,0,0">
+                    <Expander.Header><TextBlock Text="FPS Limiter 3000" FontWeight="Normal" VerticalAlignment="Center"/></Expander.Header>
+                    <StackPanel Margin="0,5,0,0">
+                        <Border Style="{StaticResource DownloadCard}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Settings.ExtensionInstalledVersionText, Mode=OneWay}" Style="{StaticResource CardDesc}" Margin="0,0,0,8"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="CheckExtensionUpdatesButton" Style="{StaticResource CardSecondaryButton}"
+                                            Click="CheckExtensionUpdatesNow_Click" HorizontalAlignment="Left"
+                                            MinWidth="166" MinHeight="34" ToolTip="Checks GitHub for a newer FPS Limiter 3000 release.">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path Data="{DynamicResource SearchIconGeometry}" Stroke="{DynamicResource ReShadeText}"
+                                                  StrokeThickness="1.6" Stretch="Uniform" Width="18" Height="18" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Check for FPS Limiter 3000 updates" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button x:Name="UpdateExtensionNowButton" Content="Update FPS Limiter 3000"
+                                            Style="{StaticResource CardPrimaryButton}" Click="UpdateExtensionNow_Click"
+                                            HorizontalAlignment="Left" Margin="8,0,0,0" MinHeight="34"
+                                            ToolTip="Downloads the new release and opens Playnite's installer. Playnite restarts afterwards."
+                                            Visibility="{Binding Settings.HasAvailableExtensionUpdate, Converter={StaticResource BoolToVis}}"/>
+                                </StackPanel>
                             </StackPanel>
-                        </Button>
-                    </Border>
-                    <Border x:Name="UpdatesStatusCard" Style="{StaticResource DownloadCard}" Visibility="Collapsed">
-                        <StackPanel>
-                            <TextBlock x:Name="UpdatesStatusText" Style="{StaticResource CardDesc}"/>
-                            <ProgressBar x:Name="UpdatesProgressBar" Height="8" Margin="0,8,0,0"
-                                         IsIndeterminate="True" Visibility="Collapsed"/>
-                            <Button x:Name="UpdateSpecialKNowButton" Content="Update now"
-                                    Style="{StaticResource CardPrimaryButton}" Click="UpdateSpecialKNow_Click"
-                                    HorizontalAlignment="Left" Margin="0,8,0,0"
-                                    Visibility="{Binding Settings.HasAvailableSpecialKUpdate, Converter={StaticResource BoolToVis}}" MinHeight="36"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource DownloadCard}">
-                        <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="250"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="Special K update channel" VerticalAlignment="Center"
-                                       ToolTip="Nightly: newest GitHub CI build (main). Discord: the same branch SKIF calls 'Discord (updates regularly)'."/>
-                            <ComboBox Grid.Column="1" SelectedValuePath="Tag"
-                                      SelectedValue="{Binding Settings.SpecialKUpdateChannel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="36">
-                                <ComboBoxItem Content="Nightly (GitHub main)" Tag="{x:Static local:SpecialKUpdateChannel.Nightly}"/>
-                                <ComboBoxItem Content="Discord (updates regularly)" Tag="{x:Static local:SpecialKUpdateChannel.Discord}"/>
-                            </ComboBox>
-                        </Grid>
-                    </Border>
-                    <Border Style="{StaticResource DownloadCard}">
-                        <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="250"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="Automatic Special K updates" VerticalAlignment="Center"/>
-                            <ComboBox Grid.Column="1" SelectedValuePath="Tag"
-                                      SelectedValue="{Binding Settings.SpecialKUpdateFrequency, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="36">
-                                <ComboBoxItem Content="Check on launch" Tag="{x:Static local:SpecialKUpdateInterval.OnLaunch}"/>
-                                <ComboBoxItem Content="Check weekly" Tag="{x:Static local:SpecialKUpdateInterval.Weekly}"/>
-                                <ComboBoxItem Content="Check monthly" Tag="{x:Static local:SpecialKUpdateInterval.Monthly}"/>
-                                <ComboBoxItem Content="Check and install on launch" Tag="{x:Static local:SpecialKUpdateInterval.CheckAndInstallOnLaunch}"/>
-                                <ComboBoxItem Content="Never" Tag="{x:Static local:SpecialKUpdateInterval.Never}"/>
-                            </ComboBox>
-                        </Grid>
-                    </Border>
+                        </Border>
+                        <Border Style="{StaticResource DownloadCard}">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="250"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="Automatic FPS Limiter 3000 update checks" VerticalAlignment="Center"
+                                           ToolTip="You are always asked before anything is installed."/>
+                                <ComboBox Grid.Column="1" SelectedValuePath="Tag"
+                                          SelectedValue="{Binding Settings.ExtensionUpdateFrequency, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="36">
+                                    <ComboBoxItem Content="Check on launch" Tag="{x:Static local:ExtensionUpdateInterval.OnLaunch}"/>
+                                    <ComboBoxItem Content="Check weekly" Tag="{x:Static local:ExtensionUpdateInterval.Weekly}"/>
+                                    <ComboBoxItem Content="Check monthly" Tag="{x:Static local:ExtensionUpdateInterval.Monthly}"/>
+                                    <ComboBoxItem Content="Never" Tag="{x:Static local:ExtensionUpdateInterval.Never}"/>
+                                </ComboBox>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="ExtUpdatesStatusCard" Style="{StaticResource DownloadCard}" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock x:Name="ExtUpdatesStatusText" Style="{StaticResource CardDesc}"/>
+                                <ProgressBar x:Name="ExtUpdatesProgressBar" Height="8" Margin="0,8,0,0"
+                                             IsIndeterminate="True" Visibility="Collapsed"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+            
+                </Expander>
+                <Expander x:Name="SpecialKUpdatesSubSection" IsExpanded="False" Expanded="UpdatesSubSection_Expanded" Margin="0,5,0,0">
+                    <Expander.Header><TextBlock Text="Special K" FontWeight="Normal" VerticalAlignment="Center"/></Expander.Header>
+                    <StackPanel Margin="0,5,0,0">
+                        <Border Style="{StaticResource DownloadCard}">
+                            <Button x:Name="CheckSpecialKUpdatesButton" Style="{StaticResource CardSecondaryButton}"
+                                    Click="CheckSpecialKUpdatesNow_Click" HorizontalAlignment="Left"
+                                    MinWidth="166" MinHeight="34" ToolTip="Checks the selected Special K update channel (Nightly or Discord).">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Data="{DynamicResource SearchIconGeometry}" Stroke="{DynamicResource ReShadeText}"
+                                          StrokeThickness="1.6" Stretch="Uniform" Width="18" Height="18" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Check for Special K updates" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </Border>
+                        <Border Style="{StaticResource DownloadCard}">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="250"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="Special K update channel" VerticalAlignment="Center"
+                                           ToolTip="Nightly: newest GitHub CI build (main). Discord: the same branch SKIF calls 'Discord (updates regularly)'."/>
+                                <ComboBox Grid.Column="1" SelectedValuePath="Tag"
+                                          SelectedValue="{Binding Settings.SpecialKUpdateChannel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="36">
+                                    <ComboBoxItem Content="Nightly (GitHub main)" Tag="{x:Static local:SpecialKUpdateChannel.Nightly}"/>
+                                    <ComboBoxItem Content="Discord (updates regularly)" Tag="{x:Static local:SpecialKUpdateChannel.Discord}"/>
+                                </ComboBox>
+                            </Grid>
+                        </Border>
+                        <Border Style="{StaticResource DownloadCard}">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="250"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="Automatic Special K updates" VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" SelectedValuePath="Tag"
+                                          SelectedValue="{Binding Settings.SpecialKUpdateFrequency, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="36">
+                                    <ComboBoxItem Content="Check on launch" Tag="{x:Static local:SpecialKUpdateInterval.OnLaunch}"/>
+                                    <ComboBoxItem Content="Check weekly" Tag="{x:Static local:SpecialKUpdateInterval.Weekly}"/>
+                                    <ComboBoxItem Content="Check monthly" Tag="{x:Static local:SpecialKUpdateInterval.Monthly}"/>
+                                    <ComboBoxItem Content="Check and install on launch" Tag="{x:Static local:SpecialKUpdateInterval.CheckAndInstallOnLaunch}"/>
+                                    <ComboBoxItem Content="Never" Tag="{x:Static local:SpecialKUpdateInterval.Never}"/>
+                                </ComboBox>
+                            </Grid>
+                        </Border>
+                        <!-- Special K status / progress -->
+                        <Border x:Name="UpdatesStatusCard" Style="{StaticResource DownloadCard}" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock x:Name="UpdatesStatusText" Style="{StaticResource CardDesc}"/>
+                                <ProgressBar x:Name="UpdatesProgressBar" Height="8" Margin="0,8,0,0"
+                                             IsIndeterminate="True" Visibility="Collapsed"/>
+                                <Button x:Name="UpdateSpecialKNowButton" Content="Update Special K now"
+                                        Style="{StaticResource CardPrimaryButton}" Click="UpdateSpecialKNow_Click"
+                                        HorizontalAlignment="Left" Margin="0,8,0,0"
+                                        Visibility="{Binding Settings.HasAvailableSpecialKUpdate, Converter={StaticResource BoolToVis}}" MinHeight="36"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+            
+                </Expander>
                 </StackPanel>
             </Expander>
 
@@ -439,6 +494,10 @@
             <Expander x:Name="NotificationsSection" IsExpanded="False" Expanded="MainSection_Expanded" Margin="0,0,0,6">
                 <Expander.Header><StackPanel Orientation="Horizontal"><Path Data="{DynamicResource BellIconGeometry}" Stroke="{DynamicResource ReShadeText}" StrokeThickness="1.6" Stretch="Uniform" Width="18" Height="18" Margin="0,0,13,0"/><TextBlock Text="Notifications" FontWeight="Normal" VerticalAlignment="Center"/></StackPanel></Expander.Header>
                 <StackPanel>
+                    <Border Background="{DynamicResource UiCard}" Padding="16,12" CornerRadius="4" Margin="0,5,0,0">
+                        <CheckBox Content="Notify me when an FPS Limiter 3000 update is available"
+                                  IsChecked="{Binding Settings.ExtensionNotifyUpdateAvailable}" VerticalAlignment="Center"/>
+                    </Border>
                     <Border Background="{DynamicResource UiCard}" Padding="16,12" CornerRadius="4" Margin="0,5,0,0">
                         <CheckBox Content="Notify me when a Special K update is available"
                                   IsChecked="{Binding Settings.SpecialKNotifyUpdateAvailable}" VerticalAlignment="Center"/>
@@ -682,10 +741,6 @@
                                             <ComboBox ItemsSource="{Binding Profiles}" DisplayMemberPath="Label"
                                                       SelectedItem="{Binding SelectedProfile, Mode=TwoWay}"
                                                       Width="194" VerticalAlignment="Center" Margin="0,0,12,0" MinHeight="36"/>
-                                            <CheckBox Content="Override monitor defaults"
-                                                      Foreground="{DynamicResource ReShadeText}" VerticalAlignment="Center"
-                                                      Visibility="{Binding SelectedProfile.IsResolution, Converter={StaticResource BoolToVis}}"
-                                                      IsChecked="{Binding SelectedProfile.UseOverride, Mode=TwoWay}"/>
                                         </WrapPanel>
                                         <StackPanel Margin="0,0,0,6">
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,2,0,2">

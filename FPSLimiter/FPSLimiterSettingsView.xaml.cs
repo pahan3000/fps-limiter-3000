@@ -44,6 +44,25 @@ namespace FPSLimiterSettingsUI
             return source is TextBox box && box.IsReadOnly && ReferenceEquals(box.Style, TryFindResource("HotkeyCaptureTextBox"));
         }
 
+        private void UpdatesSubSection_Expanded(object sender, RoutedEventArgs e)
+        {
+            if (!IsLoaded || !(sender is Expander current))
+            {
+                return;
+            }
+
+            foreach (var section in new[] { ExtensionUpdatesSubSection, SpecialKUpdatesSubSection })
+            {
+                if (section != null && !ReferenceEquals(section, current))
+                {
+                    section.IsExpanded = false;
+                }
+            }
+
+            // The Expanded event bubbles; keep the parent Updates section from re-handling it.
+            e.Handled = true;
+        }
+
         private void MainSection_Expanded(object sender, RoutedEventArgs e)
         {
             if (!IsLoaded || !(sender is Expander current))
@@ -663,6 +682,39 @@ namespace FPSLimiterSettingsUI
             finally { SetActionButtonsEnabled(true); }
         }
 
+        private async void CheckExtensionUpdatesNow_Click(object sender, RoutedEventArgs e)
+        {
+            var viewModel = DataContext as global::FPSLimiter.FPSLimiterSettingsViewModel;
+            if (viewModel == null) return;
+            SetActionButtonsEnabled(false);
+            SetExtensionUpdatesStatus("Checking GitHub for FPS Limiter 3000 updates…", true);
+            try
+            {
+                await viewModel.CheckExtensionUpdatesNowAsync();
+                var settings = viewModel.Settings;
+                SetExtensionUpdatesStatus(settings.HasAvailableExtensionUpdate
+                    ? "FPS Limiter 3000 " + settings.ExtensionUpdateAvailableVersion + " is available."
+                    : "FPS Limiter 3000 is up to date or the check failed. See the message for details.", false);
+            }
+            catch (Exception ex) { SetExtensionUpdatesStatus("Update check failed: " + ex.Message, false); }
+            finally { SetActionButtonsEnabled(true); }
+        }
+
+        private async void UpdateExtensionNow_Click(object sender, RoutedEventArgs e)
+        {
+            var viewModel = DataContext as global::FPSLimiter.FPSLimiterSettingsViewModel;
+            if (viewModel == null) return;
+            SetActionButtonsEnabled(false);
+            SetExtensionUpdatesStatus("Downloading the FPS Limiter 3000 update…", true);
+            try
+            {
+                await viewModel.UpdateExtensionNowAsync();
+                SetExtensionUpdatesStatus("If the download succeeded, confirm the install in Playnite's dialog and restart Playnite.", false);
+            }
+            catch (Exception ex) { SetExtensionUpdatesStatus("Update failed: " + ex.Message, false); }
+            finally { SetActionButtonsEnabled(true); }
+        }
+
         private async void CheckSpecialKUpdatesNow_Click(object sender, RoutedEventArgs e)
         {
             var viewModel = DataContext as global::FPSLimiter.FPSLimiterSettingsViewModel;
@@ -1085,6 +1137,8 @@ namespace FPSLimiterSettingsUI
             if (DownloadSpecialKButton != null) DownloadSpecialKButton.IsEnabled = enabled;
             if (CheckSpecialKUpdatesButton != null) CheckSpecialKUpdatesButton.IsEnabled = enabled;
             if (UpdateSpecialKNowButton != null) UpdateSpecialKNowButton.IsEnabled = enabled;
+            if (CheckExtensionUpdatesButton != null) CheckExtensionUpdatesButton.IsEnabled = enabled;
+            if (UpdateExtensionNowButton != null) UpdateExtensionNowButton.IsEnabled = enabled;
         }
 
         private void SetDownloadsStatus(string message, bool busy)
@@ -1108,6 +1162,15 @@ namespace FPSLimiterSettingsUI
                 UpdatesStatusCard.Visibility = string.IsNullOrWhiteSpace(message) ? Visibility.Collapsed : Visibility.Visible;
             if (UpdatesProgressBar != null)
                 UpdatesProgressBar.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void SetExtensionUpdatesStatus(string message, bool busy)
+        {
+            if (ExtUpdatesStatusText != null) ExtUpdatesStatusText.Text = message ?? string.Empty;
+            if (ExtUpdatesStatusCard != null)
+                ExtUpdatesStatusCard.Visibility = string.IsNullOrWhiteSpace(message) ? Visibility.Collapsed : Visibility.Visible;
+            if (ExtUpdatesProgressBar != null)
+                ExtUpdatesProgressBar.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private static void TryDeleteDirectory(string path)

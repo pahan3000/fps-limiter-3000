@@ -945,11 +945,12 @@ namespace FPSLimiter
                     $"Could not resolve a Special K profile folder for {gameName}.");
             }
 
-            var iniPath = Path.Combine(profileDir, "SpecialK.ini");
             // Special K is in use for this game: make sure SpecialK.ini exists and is not empty.
             // A missing or empty file is filled with the global options from the extension settings.
             try { EnsureGameIni(game, executablePath, frameLimit, out _); }
             catch (Exception e) { logger.Warn(e, $"Could not create SpecialK.ini for {gameName}."); }
+            // With a local wrapper the ini that counts is the one next to the DLL in the game folder.
+            var iniPath = ResolveActiveIniPath(game, profileDir);
             var profileExisted = File.Exists(iniPath);
             string originalContent = null;
             if (profileExisted)
@@ -1646,7 +1647,7 @@ namespace FPSLimiter
         /// Writes the FPS macros to Special K's Global\macros.ini: the automatic Ctrl+Shift+1-9/0 preset keys
         /// (used for live switching) and the user's own preset hotkeys. Returns the presets actually written.
         /// </summary>
-        public List<double> WritePresetMacros(IList<double> presets, IList<KeyValuePair<string, double>> userHotkeys = null)
+        public List<double> WritePresetMacros(IList<double> presets, IList<KeyValuePair<string, double>> userHotkeys = null, string localWrapperDir = null)
         {
             var written = new List<double>();
             if (presets == null) return written;
@@ -1655,13 +1656,63 @@ namespace FPSLimiter
             {
                 var fallback = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Special K");
-                if (!Directory.Exists(fallback)) return written;
-                root = fallback;
+                if (Directory.Exists(fallback)) root = fallback;
             }
-            var macrosPath = Path.Combine(root, "Global", "macros.ini");
+            if (!string.IsNullOrWhiteSpace(root))
+                written = WriteMacrosFile(Path.Combine(root, "Global", "macros.ini"), presets, userHotkeys);
 
-            var lines = File.Exists(macrosPath) ? ReadIniLines(macrosPath) : new List<string>();
-            // Drop the previous managed sections (header through the line before the next section).
+            // A local wrapper (dxgi.dll + dxgi.ini in the game folder, no SpecialK.central marker) runs as a
+            // local install and does not necessarily read the central Global\macros.ini. Mirror the same
+            // managed macros next to the wrapper so Ctrl+Shift+N works there too.
+            if (!string.IsNullOrWhiteSpace(localWrapperDir) && Directory.Exists(localWrapperDir))
+            {
+                foreach (var path in LocalMacroPaths(localWrapperDir))
+                {
+                    try
+                    {
+                        var local = WriteMacrosFile(path, presets, userHotkeys);
+                        if (written.Count == 0) written = local;
+                    }
+                    catch (Exception e) { logger.Warn(e, "Could not write local Special K macros to " + path + "."); }
+                }
+            }
+            return written;
+        }
+
+        /// <summary>Macro files a local wrapper may read, next to the wrapper in the game folder.</summary>
+        public static IEnumerable<string> LocalMacroPaths(string wrapperDir)
+        {
+            yield return Path.Combine(wrapperDir, "macros.ini");
+            yield return Path.Combine(wrapperDir, "Global", "macros.ini");
+        }
+
+        /// <summary>Removes only the managed sections from the macro files written next to a local wrapper; deletes files that end up empty.</summary>
+        public void RemoveLocalMacros(string wrapperDir)
+        {
+            if (string.IsNullOrWhiteSpace(wrapperDir)) return;
+            foreach (var path in LocalMacroPaths(wrapperDir))
+            {
+                try
+                {
+                    if (!File.Exists(path)) continue;
+                    var kept = StripManagedMacroSections(ReadIniLines(path));
+                    if (kept.Any(l => !string.IsNullOrWhiteSpace(l)))
+                        WriteIniLines(path, kept);
+                    else
+                    {
+                        File.Delete(path);
+                        var dir = Path.GetDirectoryName(path);
+                        if (string.Equals(Path.GetFileName(dir), "Global", StringComparison.OrdinalIgnoreCase) &&
+                            Directory.Exists(dir) && Directory.GetFileSystemEntries(dir).Length == 0)
+                            Directory.Delete(dir);
+                    }
+                }
+                catch (Exception e) { logger.Debug(e, "Could not clean local Special K macros " + path + "."); }
+            }
+        }
+
+        private static List<string> StripManagedMacroSections(IList<string> lines)
+        {
             var kept = new List<string>();
             bool skipping = false;
             foreach (var line in lines)
@@ -1673,6 +1724,14 @@ namespace FPSLimiter
                 if (!skipping) kept.Add(line);
             }
             while (kept.Count > 0 && string.IsNullOrWhiteSpace(kept[kept.Count - 1])) kept.RemoveAt(kept.Count - 1);
+            return kept;
+        }
+
+        private List<double> WriteMacrosFile(string macrosPath, IList<double> presets, IList<KeyValuePair<string, double>> userHotkeys)
+        {
+            var written = new List<double>();
+            var lines = File.Exists(macrosPath) ? ReadIniLines(macrosPath) : new List<string>();
+            var kept = StripManagedMacroSections(lines);
 
             var section = new List<string> { "[" + PresetMacroSection + "]" };
             foreach (var preset in presets.Where(v => v > 0).Take(MaxPresetMacros))
@@ -1698,7 +1757,7 @@ namespace FPSLimiter
                 kept.AddRange(userLines);
             }
 
-            // Skip the write when nothing changed (the file is shared by every game).
+            // Skip the write when nothing changed (the central file is shared by every game).
             if (!File.Exists(macrosPath) || !lines.SequenceEqual(kept))
             {
                 WriteIniLines(macrosPath, kept);
@@ -1760,6 +1819,67 @@ namespace FPSLimiter
             }
 
             logger.Info($"Pre-launch SK profile for {game?.Name}: fps={frameLimit.ToString("0.###", CultureInfo.InvariantCulture)}, created/filled={listedGlobals} → {iniPath}");
+        }
+
+        /// <summary>
+        /// The wrapper's own ini in the game folder (dxgi.ini ...), or null when this game has no local
+        /// wrapper ini yet. When it exists, it (not Profiles\&lt;game&gt;\SpecialK.ini) is what Special K reads.
+        /// </summary>
+        public string ResolveLocalIniPath(Game game)
+        {
+            try
+            {
+                var path = game != null ? settings?.GetGameProfile(game.Id)?.LocalWrapperIniPath : null;
+                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path)) return path;
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>The ini the extension must write for this game: the local wrapper ini when there is one, else SpecialK.ini in the profile folder.</summary>
+        private string ResolveActiveIniPath(Game game, string profileDir)
+        {
+            return ResolveLocalIniPath(game) ?? Path.Combine(profileDir, "SpecialK.ini");
+        }
+
+        /// <summary>
+        /// Creates / refreshes the ini of a local wrapper, in the game folder next to the DLL (dxgi.ini ...).
+        /// Seeds it from the extension-managed SpecialK.ini in the Profiles folder (same values global injection
+        /// uses); when it already exists (the user may have tuned it in Special K), only the keys the extension
+        /// owns are refreshed. Returns the ini path, or null when it could not be created.
+        /// </summary>
+        public string EnsureWrapperIni(Game game, string executablePath, string wrapperDllName, double frameLimit)
+        {
+            if (string.IsNullOrWhiteSpace(executablePath) || string.IsNullOrWhiteSpace(wrapperDllName)) return null;
+            var gameDir = Path.GetDirectoryName(executablePath);
+            if (string.IsNullOrWhiteSpace(gameDir)) return null;
+            var wrapperIni = Path.Combine(gameDir, Path.GetFileNameWithoutExtension(wrapperDllName) + ".ini");
+
+            if (IsIniEmptyOrMissing(wrapperIni))
+            {
+                string baseIni = null;
+                try
+                {
+                    var profileDir = ResolveProfileDirectory(game, executablePath);
+                    if (!string.IsNullOrWhiteSpace(profileDir))
+                        baseIni = Path.Combine(profileDir, "SpecialK.ini");
+                }
+                catch (Exception e) { logger.Debug(e, "Could not resolve the profile folder for the wrapper ini template."); }
+
+                if (baseIni != null && !IsIniEmptyOrMissing(baseIni))
+                    File.Copy(baseIni, wrapperIni, true);
+                else
+                    File.WriteAllText(wrapperIni, string.Empty);
+            }
+
+            if (frameLimit > 0)
+                WriteTargetFps(wrapperIni, frameLimit);
+            SeedOptionalSpecialKDefaults(
+                wrapperIni,
+                force: settings?.ApplySpecialKSettingsToExistingProfiles ?? false,
+                steamLogSilentOverride: GetSteamLogSilentOverride(game),
+                game: game);
+            return File.Exists(wrapperIni) ? wrapperIni : null;
         }
 
         /// <summary>
@@ -1860,7 +1980,7 @@ namespace FPSLimiter
             if (game == null) return;
             var profileDir = ResolveProfileDirectory(game, null);
             if (string.IsNullOrWhiteSpace(profileDir)) return;
-            var iniPath = Path.Combine(profileDir, "SpecialK.ini");
+            var iniPath = ResolveActiveIniPath(game, profileDir);
             if (IsIniEmptyOrMissing(iniPath))
             {
                 EnsureGameIni(game, null, 0, out _);
@@ -1873,6 +1993,8 @@ namespace FPSLimiter
         {
             try
             {
+                var local = ResolveLocalIniPath(game);
+                if (local != null) return local;
                 var profilesRoot = ResolveProfilesDirectory();
                 if (string.IsNullOrWhiteSpace(profilesRoot)) return null;
                 var profileDir = ResolveProfileDirectory(game, executablePath);
@@ -1925,6 +2047,8 @@ namespace FPSLimiter
         {
             try
             {
+                var local = ResolveLocalIniPath(game);
+                if (local != null) return ReadTargetFps(local);
                 var profilesRoot = ResolveProfilesDirectory();
                 if (string.IsNullOrWhiteSpace(profilesRoot)) return null;
                 var profileDir = ResolveProfileDirectory(game, executablePath);
@@ -1960,7 +2084,7 @@ namespace FPSLimiter
                 return null;
             }
 
-            var iniPath = Path.Combine(profileDir, "SpecialK.ini");
+            var iniPath = ResolveActiveIniPath(game, profileDir);
             if (IsIniEmptyOrMissing(iniPath))
             {
                 // Create SpecialK.ini now (or fill an empty one) with the global options from the
@@ -2014,7 +2138,7 @@ namespace FPSLimiter
                 return;
             }
 
-            var iniPath = Path.Combine(profileDir, "SpecialK.ini");
+            var iniPath = ResolveActiveIniPath(game, profileDir);
             if (!File.Exists(iniPath))
             {
                 return;
@@ -2156,7 +2280,7 @@ namespace FPSLimiter
         {
             try
             {
-                var path = FindNewestSpecialKIniPath(game);
+                var path = ResolveLocalIniPath(game) ?? FindNewestSpecialKIniPath(game);
                 return string.IsNullOrWhiteSpace(path) ? (double?)null : ReadTargetFps(path);
             }
             catch { return null; }

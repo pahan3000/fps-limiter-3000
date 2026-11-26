@@ -32,17 +32,17 @@ namespace FPSLimiter
         private readonly FreeSyncSessionManager freeSync = new FreeSyncSessionManager();
         internal VrrDisplayVendor GetGameVrrVendor(Game game) =>
             VrrDisplayRouter.ForMonitor(GetGameMonitorDeviceName(game));
-        public bool IsFreeSyncAvailable => freeSync.Available;
+        /// <summary>True when an AMD GPU is installed (including hybrid laptops that also have an NVIDIA GPU).</summary>
+        public bool HasAmdGpu => GpuInventory.HasAmdGpu;
+        public bool IsFreeSyncAvailable => HasAmdGpu && freeSync.Available;
         public void RefreshFreeSyncForGame(Game game)
         {
             if (game == null || !runningGameIds.Contains(game.Id)) return;
-            var vendor = GetGameVrrVendor(game);
-            // AMD ADLX is a monitor-level control; NVIDIA rendering on an AMD-wired
-            // laptop panel does NOT make this an NVIDIA display.
-            // Unknown stays on the previously working ADLX detection path.
-            if (vendor == VrrDisplayVendor.Nvidia || vendor == VrrDisplayVendor.Intel)
+            // FreeSync control is AMD-only: with no AMD GPU installed (NVIDIA/Intel-only PCs) there is
+            // nothing to control. A laptop with both an AMD and an NVIDIA GPU still counts as AMD-capable.
+            if (!HasAmdGpu)
             {
-                freeSync.Update(game, false); // release a previous AMD override if the game moved
+                freeSync.Update(game, false); // release a previous AMD override if one was held
                 return;
             }
             var sync = GetEffectiveGameSyncMode(game);
@@ -61,7 +61,7 @@ namespace FPSLimiter
         /// <summary>True while at least one game is running (fast, no allocation).</summary>
         public bool HasRunningGames => runningGameIds.Count > 0;
         public bool IsFreeSyncGameRunning(Game game) => game != null && runningGameIds.Contains(game.Id);
-        public bool? ReadFreeSyncEnabled() => freeSync.GetCurrentState();
+        public bool? ReadFreeSyncEnabled() => HasAmdGpu ? freeSync.GetCurrentState() : null;
 
         public void RestoreAllFreeSync() => freeSync.RestoreAll();
 
@@ -149,7 +149,11 @@ namespace FPSLimiter
         private void TriggerSpecialKPresetMacro(Game game, double cap)
         {
             if (game == null) return;
-            if (!specialKMacroPresets.ContainsKey(game.Id)) return;
+            if (!specialKMacroPresets.ContainsKey(game.Id))
+            {
+                logger.Info("Special K: no preset macros registered for " + game.Name + "; " + cap + " FPS applies on the next launch.");
+                return;
+            }
             lock (specialKMacroLock)
             {
                 specialKPendingMacroCap[game.Id] = cap;
@@ -158,6 +162,27 @@ namespace FPSLimiter
             var gameId = game.Id;
             var gameName = game.Name;
             Task.Run(() => RunSpecialKMacroWorker(gameId, gameName));
+        }
+
+        private int ResolveSpecialKInputProcess(Guid gameId, int trackedProcessId)
+        {
+            try
+            {
+                var game = playniteApi.Database.Games.Get(gameId);
+                var profile = Settings.GetGameProfile(gameId);
+                var exe = profile?.LastResolvedExecutable;
+                if (string.IsNullOrWhiteSpace(exe)) exe = profile?.ManualExecutablePath;
+                string installDir = game?.InstallDirectory;
+                if (game != null && !string.IsNullOrWhiteSpace(installDir))
+                {
+                    try { installDir = playniteApi.ExpandGameVariables(game, installDir); } catch { }
+                }
+                string detail;
+                var pid = MonitorManager.FindGameWindowProcess(trackedProcessId, exe, installDir, out detail);
+                logger.Info("Special K: key target pid " + pid + " — " + detail);
+                return pid;
+            }
+            catch { return trackedProcessId; }
         }
 
         private void RunSpecialKMacroWorker(Guid gameId, string gameName)
@@ -171,9 +196,18 @@ namespace FPSLimiter
                     int processId;
                     if (!runningGameIds.Contains(gameId) || !runningProcessIds.TryGetValue(gameId, out processId))
                     {
+                        logger.Info("Special K: no running process is tracked for " + gameName + "; the pending cap change was dropped.");
                         lock (specialKMacroLock) { specialKPendingMacroCap.Remove(gameId); specialKMacroWorkers.Remove(gameId); }
                         exitedCleanly = true;
                         return;
+                    }
+
+                    // Playnite's started-process id can be a launcher stub without a window: find the real game process.
+                    var windowProcessId = ResolveSpecialKInputProcess(gameId, processId);
+                    if (windowProcessId != processId)
+                    {
+                        logger.Info("Special K: " + gameName + " window belongs to pid " + windowProcessId + " (Playnite tracked pid " + processId + ").");
+                        processId = windowProcessId;
                     }
 
                     // The game overlay soft-pauses the game while it is open: wait until it runs again.
@@ -202,7 +236,11 @@ namespace FPSLimiter
                     double current;
                     bool sameCap;
                     lock (specialKMacroLock) sameCap = specialKCurrentCap.TryGetValue(gameId, out current) && Math.Abs(current - cap) < 0.005;
-                    if (sameCap) continue;
+                    if (sameCap)
+                    {
+                        logger.Info("Special K: " + gameName + " is already at " + cap + " FPS as far as the extension knows; no key pressed.");
+                        continue;
+                    }
 
                     List<double> written;
                     if (!specialKMacroPresets.TryGetValue(gameId, out written)) continue;
@@ -221,14 +259,15 @@ namespace FPSLimiter
                         }
                         key = SpecialKLimiterBackend.PresetMacroKey(index);
                     }
-                    if (MonitorManager.SendCtrlShiftKeyToProcess(processId, key))
+                    string keyFailure;
+                    if (MonitorManager.SendCtrlShiftKeyToProcess(processId, key, out keyFailure))
                     {
                         lock (specialKMacroLock) specialKCurrentCap[gameId] = cap;
                         logger.Info("Special K: pressed Ctrl+Shift+" + key + " for " + gameName + (cap <= 0 ? " (no cap)." : " (" + cap + " FPS)."));
                     }
                     else
                     {
-                        logger.Warn("Special K: could not bring " + gameName + " to the front to press Ctrl+Shift+" + key + ".");
+                        logger.Warn("Special K: could not bring " + gameName + " to the front to press Ctrl+Shift+" + key + ": " + keyFailure + ".");
                     }
                 }
             }
@@ -477,37 +516,70 @@ namespace FPSLimiter
         {
             if (string.IsNullOrWhiteSpace(name)) return false;
             var value = name.ToLowerInvariant();
-            return value.Contains("easyanticheat") || value.Contains("battleye") ||
+            // Riot Vanguard's driver / tray names are short, so match them at the start of the name only.
+            if (value.StartsWith("vgk") || value.StartsWith("vgc")) return true;
+            return value.Contains("anticheat") || value.Contains("battleye") ||
                    value.Contains("beclient") || value.Contains("beservice") ||
-                   value.Contains("vanguard") || value.Contains("vgk") || value.Contains("vgc") ||
+                   value.Contains("vanguard") ||
                    value.Contains("ricochet") || value.Contains("gameguard") ||
                    value.Contains("nprotect") || value.Contains("xigncode") ||
-                   value.Contains("punkbuster") || value.Contains("eosanticheat");
+                   value.Contains("punkbuster") || value.Contains("equ8") ||
+                   value.Contains("mhyprot") || value.Contains("faceitclient") ||
+                   value.Contains("uncheater");
         }
+
+        // The folder scan is not free and ShouldUseSpecialKBackend runs on every UI refresh, so remember the answer.
+        private readonly Dictionary<Guid, KeyValuePair<DateTime, bool>> antiCheatCache =
+            new Dictionary<Guid, KeyValuePair<DateTime, bool>>();
+        private readonly object antiCheatCacheLock = new object();
+        private static readonly TimeSpan AntiCheatCacheLifetime = TimeSpan.FromMinutes(5);
 
         /// <summary>
         /// Conservative anti-cheat detection based on common component names in the game folder.
-        /// It is intentionally bounded so a large library cannot stall launch handling.
+        /// It is intentionally bounded so a large library cannot stall launch handling; the result is cached briefly.
         /// </summary>
         public bool IsLikelyAntiCheatGame(Game game)
         {
+            if (game == null) return false;
+            lock (antiCheatCacheLock)
+            {
+                KeyValuePair<DateTime, bool> cached;
+                if (antiCheatCache.TryGetValue(game.Id, out cached) &&
+                    DateTime.UtcNow - cached.Key < AntiCheatCacheLifetime)
+                    return cached.Value;
+            }
+
+            var found = ScanForAntiCheat(game);
+            lock (antiCheatCacheLock)
+                antiCheatCache[game.Id] = new KeyValuePair<DateTime, bool>(DateTime.UtcNow, found);
+            if (found) logger.Info($"Anti-cheat components found for {game.Name}; Special K will not be injected.");
+            return found;
+        }
+
+        private bool ScanForAntiCheat(Game game)
+        {
             var root = game?.InstallDirectory;
+            if (string.IsNullOrWhiteSpace(root)) return false;
+            try { root = playniteApi.ExpandGameVariables(game, root); } catch { }
             if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) return false;
             try
             {
+                // Breadth-first, a few levels deep (Unreal games keep BattlEye / EAC under <Game>\Binaries\Win64).
+                // The budget counts directories as well as entries so one huge asset folder cannot hide the rest.
+                const int maxDepth = 4;
                 var pending = new Queue<Tuple<string, int>>();
                 var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 pending.Enqueue(Tuple.Create(root, 0));
                 int inspected = 0;
-                while (pending.Count > 0 && inspected < 4000)
+                while (pending.Count > 0 && inspected < 20000)
                 {
                     var item = pending.Dequeue();
                     if (!visited.Add(item.Item1)) continue;
                     foreach (var entry in Directory.EnumerateFileSystemEntries(item.Item1))
                     {
-                        if (++inspected > 4000) break;
+                        if (++inspected > 20000) break;
                         if (IsAntiCheatMarker(Path.GetFileName(entry))) return true;
-                        if (item.Item2 < 2 && Directory.Exists(entry))
+                        if (item.Item2 < maxDepth && Directory.Exists(entry))
                             pending.Enqueue(Tuple.Create(entry, item.Item2 + 1));
                     }
                 }
@@ -541,6 +613,229 @@ namespace FPSLimiter
             return Settings.SpecialKInjectionMode;
         }
 
+        /// <summary>
+        /// Frame cap Special K should start with for this game (game profile, else the global cap), 0 = none.
+        /// </summary>
+        private double ResolveSpecialKFrameLimit(Game game)
+        {
+            var profile = Settings.GetGameProfile(game.Id);
+            var modeLimit = profile?.GetMode(CurrentMode);
+            var windowsGame = FPSLimiterSettings.IsWindowsGame(game);
+            var globalForMode = Settings.GetGlobalForMonitor(ResolveGameMonitorDeviceName(game.Id), windowsGame, CurrentMode);
+            var hasGameProfile = modeLimit != null && modeLimit.Enabled;
+            var useGlobalFallback = !hasGameProfile && globalForMode.Enabled && globalForMode.FrameLimit > 0;
+            return hasGameProfile ? modeLimit.FrameLimit
+                : (useGlobalFallback ? globalForMode.FrameLimit : 0);
+        }
+
+        /// <summary>
+        /// The exe the local wrapper goes next to. Steam / Epic / GOG games only have a launcher link before their
+        /// first run, so the install folder is searched for the real exe.
+        /// </summary>
+        private string ResolveLocalWrapperTarget(Game game, GameLimitProfile profile, GameAction sourceAction)
+        {
+            var target = targetResolver.ResolveLocalInjectionExecutable(game, profile, sourceAction);
+            if (!string.IsNullOrWhiteSpace(target))
+                logger.Info($"Local Special K: wrapper for {game.Name} goes next to {target}.");
+            return target;
+        }
+
+        /// <summary>
+        /// Local injection: puts the Special K wrapper DLL in the game's exe folder and makes sure the wrapper's own
+        /// ini (dxgi.ini ...) sits next to it with the cap and the extension's settings. Returns null on success,
+        /// otherwise the reason it is not active (also raised as a notification).
+        /// </summary>
+        private string EnsureLocalSpecialKWrapper(Game game, string exePath, double frameLimit)
+        {
+            string problem = null;
+            try
+            {
+                var result = SpecialKLocalWrapper.Install(exePath, ResolveSpecialKBinaryDirectoryPublic());
+                if (!result.Ready)
+                {
+                    problem = result.Message;
+                }
+                else
+                {
+                    var profile = Settings.GetOrCreateGameProfile(game.Id);
+
+                    // The wrapper used to be put somewhere else (wrong folder): take that one back first.
+                    var oldDll = profile.LocalWrapperPath;
+                    var oldIni = profile.LocalWrapperIniPath;
+                    var oldDir = !string.IsNullOrWhiteSpace(oldDll) ? Path.GetDirectoryName(oldDll) : null;
+                    var newDir = Path.GetDirectoryName(result.DllPath);
+                    if (!string.IsNullOrWhiteSpace(oldDir) &&
+                        !string.Equals(oldDir.TrimEnd('\\'), newDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                    {
+                        SpecialKLocalWrapper.Remove(oldDll, profile.LocalWrapperMarkerCreated);
+                        try
+                        {
+                            if (!string.IsNullOrWhiteSpace(oldIni) && File.Exists(oldIni) &&
+                                string.Equals(Path.GetDirectoryName(oldIni)?.TrimEnd('\\'), oldDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                                File.Delete(oldIni);
+                        }
+                        catch { }
+                        profile.LocalWrapperPath = null;
+                        profile.LocalWrapperIniPath = null;
+                        profile.LocalWrapperMarkerCreated = false;
+                        logger.Info($"Removed the local Special K wrapper from the wrong folder: {oldDir}");
+                    }
+
+                    if (result.Copied) profile.LocalWrapperPath = result.DllPath;
+                    // else: a Special K DLL that was already there. Not ours to delete later, but still configured.
+
+                    // A SpecialK.central marker we created in an older version would hide the ini in Profiles\<game>.
+                    if (profile.LocalWrapperMarkerCreated)
+                    {
+                        try
+                        {
+                            var marker = Path.Combine(Path.GetDirectoryName(exePath) ?? string.Empty, SpecialKLocalWrapper.CentralMarkerName);
+                            if (File.Exists(marker)) File.Delete(marker);
+                            profile.LocalWrapperMarkerCreated = false;
+                        }
+                        catch (Exception ex) { logger.Debug(ex, "Could not remove the old SpecialK.central marker."); }
+                    }
+
+                    var ini = specialKBackend.EnsureWrapperIni(game, exePath, Path.GetFileName(result.DllPath), frameLimit);
+                    if (string.IsNullOrWhiteSpace(ini))
+                    {
+                        problem = "the wrapper's ini could not be created in the game folder";
+                    }
+                    else
+                    {
+                        profile.LocalWrapperIniPath = ini;
+                        logger.Info($"Local Special K for {game.Name}: wrapper {result.DllPath}, config {ini}.");
+                    }
+                    settingsViewModel.SaveSettings();
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                problem = "the game folder is read-only for Playnite (run Playnite as administrator once, or install the DLL by hand)";
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, $"Local Special K setup failed for {game.Name}.");
+                problem = ex.Message;
+            }
+
+            if (problem != null)
+            {
+                logger.Warn($"Local Special K is not active for {game.Name}: {problem}.");
+                try
+                {
+                    playniteApi.Notifications.Add("fpslimiter-sk-local-" + game.Id,
+                        "Special K local injection is not active for " + game.Name + ": " + problem + ".",
+                        NotificationType.Error);
+                }
+                catch { }
+            }
+            return problem;
+        }
+
+        /// <summary>
+        /// Takes back the local wrapper this extension installed: the DLL together with its ini (and an old
+        /// SpecialK.central marker). Returns the folder it was removed from, or null when nothing was removed.
+        /// A Special K DLL the user put there themselves is left alone, with its ini.
+        /// </summary>
+        private string RemoveInstalledLocalWrapper(Game game)
+        {
+            var profile = Settings.GetGameProfile(game.Id);
+            if (profile == null ||
+                (string.IsNullOrWhiteSpace(profile.LocalWrapperPath) && string.IsNullOrWhiteSpace(profile.LocalWrapperIniPath)))
+                return null;
+
+            var weOwnTheDll = !string.IsNullOrWhiteSpace(profile.LocalWrapperPath);
+            var folder = weOwnTheDll ? Path.GetDirectoryName(profile.LocalWrapperPath) : null;
+
+            if (weOwnTheDll &&
+                !SpecialKLocalWrapper.Remove(profile.LocalWrapperPath, profile.LocalWrapperMarkerCreated))
+                return null; // could not remove it (in use?): keep the record and try again later
+
+            if (weOwnTheDll && !string.IsNullOrWhiteSpace(profile.LocalWrapperIniPath))
+            {
+                try
+                {
+                    if (File.Exists(profile.LocalWrapperIniPath))
+                    {
+                        File.Delete(profile.LocalWrapperIniPath);
+                        logger.Info("Removed local Special K ini: " + profile.LocalWrapperIniPath);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn("Could not remove the local Special K ini " + profile.LocalWrapperIniPath + ": " + ex.Message);
+                }
+            }
+
+            profile.LocalWrapperPath = null;
+            profile.LocalWrapperMarkerCreated = false;
+            profile.LocalWrapperIniPath = null;
+            settingsViewModel.SaveSettings();
+            return folder;
+        }
+
+        /// <summary>
+        /// Called right after the injection method of games was changed in the UI: installs the wrapper DLL + ini in
+        /// the game folder now when the game is on local injection, or takes an installed one back when it is not.
+        /// Returns a message for the UI (null when there is nothing to report).
+        /// </summary>
+        public string ApplyLocalInjectionChoice(Game game, out bool failed)
+        {
+            failed = false;
+            if (game == null) return null;
+            try
+            {
+                if (ResolveSpecialKInjectionMode(game) != SpecialKInjectionMode.Local)
+                {
+                    var removedFrom = RemoveInstalledLocalWrapper(game);
+                    return removedFrom == null
+                        ? null
+                        : "Special K local DLL and ini removed from " + removedFrom;
+                }
+
+                if (!ShouldUseSpecialKBackend(game))
+                {
+                    // Not on Special K right now; the wrapper is placed at launch when it is.
+                    return null;
+                }
+
+                var profile = Settings.GetOrCreateGameProfile(game.Id);
+                var target = ResolveLocalWrapperTarget(game, profile, null);
+                if (string.IsNullOrWhiteSpace(target))
+                {
+                    failed = true;
+                    var msg = "the game's executable could not be found. Set it manually in the game's settings, or start the game once.";
+                    try
+                    {
+                        playniteApi.Notifications.Add("fpslimiter-sk-local-" + game.Id,
+                            "Special K local injection is not active for " + game.Name + ": " + msg,
+                            NotificationType.Error);
+                    }
+                    catch { }
+                    return msg;
+                }
+
+                var frameLimit = ResolveSpecialKFrameLimit(game);
+                // Make sure the central SpecialK.ini (the template for the wrapper ini) exists first.
+                specialKBackend.EnsureProfileBeforeLaunch(game, target, frameLimit);
+                var problem = EnsureLocalSpecialKWrapper(game, target, frameLimit);
+                if (problem != null) { failed = true; return problem; }
+
+                profile = Settings.GetOrCreateGameProfile(game.Id);
+                profile.LastResolvedExecutable = target;
+                settingsViewModel.SaveSettings();
+                try { playniteApi.Notifications.Remove("fpslimiter-sk-local-" + game.Id); } catch { }
+                return "Special K local injection is set up for " + game.Name + ": " + profile.LocalWrapperIniPath;
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, $"Applying local Special K injection for {game.Name} failed.");
+                failed = true;
+                return ex.Message;
+            }
+        }
+
         public void SetGameSpecialKInjection(IEnumerable<Game> games, GameSpecialKInjectionPreference preference)
         {
             foreach (var game in games)
@@ -552,7 +847,19 @@ namespace FPSLimiter
 
         public void PrepareSpecialKInjection(Game game, GameAction sourceAction = null)
         {
-            if (game == null || Settings.GetGameProfile(game.Id)?.SkipLimiterInjection == true || !ShouldUseSpecialKBackend(game))
+            if (game == null)
+            {
+                return;
+            }
+
+            var useSpecialK = Settings.GetGameProfile(game.Id)?.SkipLimiterInjection != true && ShouldUseSpecialKBackend(game);
+            if (!useSpecialK || ResolveSpecialKInjectionMode(game) != SpecialKInjectionMode.Local)
+            {
+                // No longer local (or not Special K at all): take back a wrapper this extension installed earlier.
+                RemoveInstalledLocalWrapper(game);
+            }
+
+            if (!useSpecialK)
             {
                 return;
             }
@@ -561,16 +868,15 @@ namespace FPSLimiter
             try
             {
                 var profile = Settings.GetGameProfile(game.Id);
-                var modeLimit = profile?.GetMode(CurrentMode);
-                var windowsGame = FPSLimiterSettings.IsWindowsGame(game);
-                var globalForMode = Settings.GetGlobalForMonitor(ResolveGameMonitorDeviceName(game.Id), windowsGame, CurrentMode);
-                var hasGameProfile = modeLimit != null && modeLimit.Enabled;
-                var useGlobalFallback = !hasGameProfile && globalForMode.Enabled && globalForMode.FrameLimit > 0;
-                var frameLimit = hasGameProfile ? modeLimit.FrameLimit
-                    : (useGlobalFallback ? globalForMode.FrameLimit : 0);
+                var frameLimit = ResolveSpecialKFrameLimit(game);
 
-                var target = targetResolver.ResolveTarget(game, profile, sourceAction, null);
+                var isLocal = ResolveSpecialKInjectionMode(game) == SpecialKInjectionMode.Local;
+                var target = isLocal
+                    ? ResolveLocalWrapperTarget(game, profile, sourceAction)
+                    : targetResolver.ResolveTarget(game, profile, sourceAction, null);
                 specialKBackend.EnsureProfileBeforeLaunch(game, target, frameLimit);
+                if (ResolveSpecialKInjectionMode(game) == SpecialKInjectionMode.Local)
+                    EnsureLocalSpecialKWrapper(game, target, frameLimit);
                 SyncSpecialKPresetMacros(game, target);
                 // Global injection only activates for whitelisted executables (what SKIF does
                 // when a game is added to its library). Must be in place before the game starts.
@@ -1103,7 +1409,14 @@ namespace FPSLimiter
 
         public bool ShouldUseSpecialKBackend(Game game = null)
         {
-            if (game != null && specialKFallbackNextLaunchGames.Contains(game.Id)) return false;
+            // One-shot RTSS fallback after a failed Special K launch. It holds for the whole next session
+            // (it is only consumed when that session ends), and is ignored once the option is switched off.
+            if (game != null && Settings.FallbackToRtssIfSpecialKFails)
+            {
+                bool fallbackActive;
+                lock (postInjectLock) fallbackActive = specialKFallbackNextLaunchGames.Contains(game.Id);
+                if (fallbackActive) return false;
+            }
             if (IsSpecialKHiddenForGame(game))
                 return false;
             if (game != null && Settings.NeverInjectSpecialKForAntiCheatGames && IsLikelyAntiCheatGame(game))
@@ -1777,8 +2090,8 @@ namespace FPSLimiter
         /// <summary>Marks a game as currently running. Call once the game process has actually started.</summary>
         public void NotifyGameStarted(Guid gameId, int? startedProcessId = null)
         {
-            // The one-shot RTSS fallback has successfully been consumed.
-            specialKFallbackNextLaunchGames.Remove(gameId);
+            // The one-shot RTSS fallback must stay active while this game runs: TryApplyForGame, the post-launch
+            // retarget and live preset changes all ask ShouldUseSpecialKBackend again. NotifyGameStopped consumes it.
             runningGameIds.Add(gameId);
             if (startedProcessId.HasValue && startedProcessId.Value > 0)
                 runningProcessIds[gameId] = startedProcessId.Value;
@@ -1794,8 +2107,13 @@ namespace FPSLimiter
         }
 
         /// <summary>Marks a game as no longer running (stopped, or the launch was cancelled).</summary>
-        public void NotifyGameStopped(Guid gameId)
+        public void NotifyGameStopped(Guid gameId, bool consumeSpecialKFallback = false)
         {
+            if (consumeSpecialKFallback)
+            {
+                // The session that used the one-shot RTSS fallback has ended; Special K is tried again next launch.
+                lock (postInjectLock) specialKFallbackNextLaunchGames.Remove(gameId);
+            }
             freeSync.Stop(gameId);
             runningGameIds.Remove(gameId);
             runningProcessIds.Remove(gameId);
@@ -2225,6 +2543,8 @@ namespace FPSLimiter
                         // prior refresh state already captured; don't call RestoreSession again
                         priorRefreshState = existingSession.RefreshRateChanged ? existingSession : priorRefreshState;
                         logger.Info($"Live-switched {game.Name} Special K FPS cap to {frameLimit}.");
+                        // The preset list is only known after the launch-time sync; redo it if this session lost it.
+                        if (!specialKMacroPresets.ContainsKey(game.Id)) SyncSpecialKPresetMacros(game, target);
                         TriggerSpecialKPresetMacro(game, frameLimit);
                     }
                     else

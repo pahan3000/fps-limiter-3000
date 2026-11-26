@@ -311,6 +311,15 @@ namespace FPSLimiter
         CheckAndInstallOnLaunch = 5
     }
 
+    /// <summary>How often FPS Limiter 3000 checks GitHub for a newer release of itself.</summary>
+    public enum ExtensionUpdateInterval
+    {
+        OnLaunch = 0,
+        Weekly = 1,
+        Monthly = 2,
+        Never = 3
+    }
+
     /// <summary>Which Special K build stream the updater follows.</summary>
     public enum SpecialKUpdateChannel
     {
@@ -497,7 +506,8 @@ namespace FPSLimiter
     {
         public int Width { get; set; }
         public int Height { get; set; }
-        public bool UseOverride { get; set; }
+        /// <summary>Always on: every resolution entry overrides the monitor defaults (the toggle was removed). Old saved values are ignored.</summary>
+        public bool UseOverride { get => true; set { } }
         public bool IsCurrent { get; set; }
         public string DisplayName => Width + " × " + Height + (IsCurrent ? " (current)" : "");
         public ModeLimitSettings Windows { get; set; } = new ModeLimitSettings();
@@ -598,19 +608,9 @@ namespace FPSLimiter
         public ModeLimitSettings Windows => resolution == null ? monitor.GetLimit(true) : resolution.GetLimit(true);
         public ModeLimitSettings NonWindows => resolution == null ? monitor.GetLimit(false) : resolution.GetLimit(false);
 
-        public bool UseOverride
-        {
-            get => resolution != null && resolution.UseOverride;
-            set
-            {
-                if (resolution == null || resolution.UseOverride == value) return;
-                resolution.UseOverride = value;
-                OnPropertyChanged(nameof(UseOverride));
-                OnPropertyChanged(nameof(IsEditable));
-            }
-        }
+        public bool UseOverride => true;
 
-        public bool IsEditable => resolution == null || resolution.UseOverride;
+        public bool IsEditable => true;
     }
 
     /// <summary>Temporary selection state for one monitor, not part of serialized settings.</summary>
@@ -1244,7 +1244,7 @@ namespace FPSLimiter
         private string specialKUpdateLastInstalledArtifact = string.Empty;
         // Existing per-game Special K profiles may contain their own choices. When enabled,
         // the FPS Limiter settings panel owns the keys it exposes and updates those keys before launch.
-        private bool applySpecialKSettingsToExistingProfiles = true;
+        private bool applySpecialKSettingsToExistingProfiles = false;
         private string presetsText = "30, 60, 120";
         // GlobalDesktop / GlobalFullscreen are the Windows-game globals (kept under these names
         // so existing user settings continue to deserialize correctly). Non-Windows games use the
@@ -1885,6 +1885,57 @@ namespace FPSLimiter
             !string.Equals(SpecialKUpdateLastCheckedArtifact, SpecialKUpdateLastInstalledArtifact,
                 StringComparison.OrdinalIgnoreCase);
 
+        // ---- FPS Limiter 3000 (this extension) self-update ----
+        private ExtensionUpdateInterval extensionUpdateFrequency = ExtensionUpdateInterval.Weekly;
+        private bool extensionNotifyUpdateAvailable = true;
+        private DateTime extensionUpdateLastCheckUtc = DateTime.MinValue;
+        private string extensionUpdateAvailableVersion = string.Empty;
+        private string extensionUpdateLastNotifiedVersion = string.Empty;
+
+        public ExtensionUpdateInterval ExtensionUpdateFrequency
+        {
+            get => extensionUpdateFrequency;
+            set => SetValue(ref extensionUpdateFrequency, value);
+        }
+
+        public bool ExtensionNotifyUpdateAvailable
+        {
+            get => extensionNotifyUpdateAvailable;
+            set => SetValue(ref extensionNotifyUpdateAvailable, value);
+        }
+
+        public DateTime ExtensionUpdateLastCheckUtc
+        {
+            get => extensionUpdateLastCheckUtc;
+            set => SetValue(ref extensionUpdateLastCheckUtc, value);
+        }
+
+        /// <summary>Newest release found by the last check (empty when up to date).</summary>
+        public string ExtensionUpdateAvailableVersion
+        {
+            get => extensionUpdateAvailableVersion;
+            set
+            {
+                SetValue(ref extensionUpdateAvailableVersion, value ?? string.Empty);
+                OnPropertyChanged(nameof(HasAvailableExtensionUpdate));
+            }
+        }
+
+        public string ExtensionUpdateLastNotifiedVersion
+        {
+            get => extensionUpdateLastNotifiedVersion;
+            set => SetValue(ref extensionUpdateLastNotifiedVersion, value ?? string.Empty);
+        }
+
+        [DontSerialize]
+        public bool HasAvailableExtensionUpdate =>
+            !string.IsNullOrWhiteSpace(ExtensionUpdateAvailableVersion) &&
+            ExtensionUpdateService.IsNewerThanInstalled(ExtensionUpdateAvailableVersion);
+
+        [DontSerialize]
+        public string ExtensionInstalledVersionText =>
+            "Installed version: " + ExtensionUpdateService.FormatVersion(ExtensionUpdateService.GetInstalledVersion());
+
         public bool SpecialKReflexIsEndOfFrame
         {
             get => SpecialKReflexTrigger == SpecialKReflexTrigger.EndOfFrame;
@@ -2340,6 +2391,8 @@ namespace FPSLimiter
                 !profile.HasAnyLimit() &&
                 profile.RtssForceFlipModel == RtssFlipPreference.UseDefault &&
                 !profile.SkipLimiterInjection &&
+                string.IsNullOrWhiteSpace(profile.LocalWrapperPath) &&
+                string.IsNullOrWhiteSpace(profile.LocalWrapperIniPath) &&
                 string.IsNullOrWhiteSpace(profile.ManualExecutablePath) &&
                 string.IsNullOrWhiteSpace(profile.LastResolvedExecutable) &&
                 !profile.HasSpecialKWindowLayeringOverride &&
@@ -2384,6 +2437,12 @@ namespace FPSLimiter
         public bool DisableFreeSyncForGame { get; set; } = false;
         // Do not launch or configure an FPS Limiter backend for this game.
         public bool SkipLimiterInjection { get; set; } = false;
+        /// <summary>Path of a local Special K wrapper DLL this extension copied into the game folder (empty = none).</summary>
+        public string LocalWrapperPath { get; set; }
+        /// <summary>True when the extension also created the SpecialK.central marker next to it.</summary>
+        public bool LocalWrapperMarkerCreated { get; set; }
+        /// <summary>The wrapper's own ini in the game folder (dxgi.ini ...). When set, every extension write for this game targets it instead of Profiles\<game>\SpecialK.ini.</summary>
+        public string LocalWrapperIniPath { get; set; }
         // UseDefault inherits the global choice.
         public RtssFlipPreference RtssForceFlipModel { get; set; } = RtssFlipPreference.UseDefault;
         public bool HasSpecialKWindowLayeringOverride { get; set; }
@@ -3142,6 +3201,10 @@ namespace FPSLimiter
         {
             return plugin.CheckSpecialKUpdatesNowAsync();
         }
+
+        public System.Threading.Tasks.Task CheckExtensionUpdatesNowAsync() => plugin.CheckExtensionUpdatesNowAsync();
+
+        public System.Threading.Tasks.Task UpdateExtensionNowAsync() => plugin.UpdateExtensionNowAsync();
 
         public void BeginEdit()
         {

@@ -864,7 +864,7 @@ namespace FPSLimiter
             }
         }
 
-        private static bool IsSpecialKDll(string path)
+        internal static bool IsSpecialKDll(string path)
         {
             try
             {

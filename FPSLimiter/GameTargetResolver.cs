@@ -65,6 +65,167 @@ namespace FPSLimiter
             return null;
         }
 
+        /// <summary>
+        /// Where a local (DLL-in-game-folder) wrapper goes: next to the exe that really renders, the same way the
+        /// DXVK Manager does it. Manual exe, then the game's Play Action when it is a real file, then a scan of the
+        /// install folder. Cached "last seen" paths and tracking paths are deliberately NOT used: they can point at a
+        /// launcher stub in the install root, and a wrapper dropped there never loads.
+        /// </summary>
+        public string ResolveLocalInjectionExecutable(Game game, GameLimitProfile profile, GameAction sourceAction = null)
+        {
+            var manual = NormalizeExecutablePath(profile?.ManualExecutablePath, game, sourceAction);
+            if (IsValidExecutable(manual)) return manual;
+
+            try
+            {
+                var emulator = EmulatorDetection.ResolveExe(playniteApi, game, sourceAction);
+                if (IsValidExecutable(emulator)) return emulator;
+            }
+            catch { }
+
+            string fromAction = null;
+            var actions = new List<GameAction>();
+            if (sourceAction != null) actions.Add(sourceAction);
+            if (game?.GameActions != null) actions.AddRange(game.GameActions.Where(a => a != null && a.IsPlayAction));
+            foreach (var action in actions)
+            {
+                var raw = action.Path;
+                if (string.IsNullOrWhiteSpace(raw) || raw.Contains("://")) continue; // steam://rungameid/... is not an exe
+                var normalized = NormalizeExecutablePath(raw, game, action);
+                if (IsValidExecutable(normalized)) { fromAction = normalized; break; }
+            }
+
+            var guessed = GuessExecutableFromInstallDirectory(game);
+            if (fromAction == null) return guessed;
+
+            // A Play Action that points at a small launcher stub (no graphics API) while the install folder holds
+            // the real game exe (e.g. Binaries\Win64\Game-Win64-Shipping.exe): use the real one.
+            if (!string.IsNullOrWhiteSpace(guessed) &&
+                !string.Equals(guessed, fromAction, StringComparison.OrdinalIgnoreCase) &&
+                !LinksGraphicsApi(fromAction) && LinksGraphicsApi(guessed))
+            {
+                logger.Info($"Local Special K: {fromAction} links no graphics API; using {guessed} instead.");
+                return guessed;
+            }
+            return fromAction;
+        }
+
+        private static bool LinksGraphicsApi(string exePath)
+        {
+            try { return GraphicsApiDetector.DetectLinkedApi(exePath) != ApiKind.Unknown; }
+            catch { return false; }
+        }
+
+        private static readonly string[] GuessNameBlacklist =
+        {
+            "unins", "redist", "vcredist", "vc_redist", "dotnetfx", "directx", "dxsetup", "dxwebsetup", "setup",
+            "crashpad", "crashhandler", "crashreporter", "crashreportclient", "unrealcefsubprocess",
+            "easyanticheat", "eac_launcher", "battleye", "oalinst", "vulkanrt", "prereq", "helper", "updater",
+            "installer", "benchmark", "wmplayer", "quicktime", "notification_helper", "unitycrash", "download",
+            "register", "bootstrap", "patch", "splash", "support", "wmp"
+        };
+
+        private static readonly string[] GuessDirBlacklist =
+        {
+            "_commonredist", "commonredist", "redist", "easyanticheat", "battleye", "__installer", "miles", "support"
+        };
+
+        /// <summary>
+        /// Best guess at the game's real exe when Playnite only has a launcher link (steam://rungameid/..., Epic, GOG)
+        /// and the game has not run yet. Needed by local Special K injection, which has to put its DLL next to the exe.
+        /// Same idea as DXVK Manager: skip installers / crash handlers / anti-cheat, prefer a name that matches the
+        /// game, then an exe that links Direct3D or OpenGL (Unreal "-Shipping" builds first), then the biggest file.
+        /// </summary>
+        public string GuessExecutableFromInstallDirectory(Game game)
+        {
+            try
+            {
+                var root = game?.InstallDirectory;
+                if (string.IsNullOrWhiteSpace(root)) return null;
+                try { root = playniteApi.ExpandGameVariables(game, root); } catch { }
+                if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) return null;
+                root = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+                var all = new List<string>();
+                CollectExecutables(root, 0, all);
+                var candidates = all.Where(p => !IsGuessBlacklisted(p, root)).ToList();
+                if (candidates.Count == 0) return null;
+
+                var name = NormalizeName(game.Name);
+                var nameMatches = string.IsNullOrEmpty(name)
+                    ? new List<string>()
+                    : candidates.Where(p =>
+                    {
+                        var n = NormalizeName(Path.GetFileNameWithoutExtension(p));
+                        return n.Length > 0 && (n.Contains(name) || name.Contains(n));
+                    }).ToList();
+
+                var pool = nameMatches.Count > 0 ? nameMatches : candidates;
+                var withApi = pool
+                    .Where(p => GraphicsApiDetector.DetectLinkedApi(p) != ApiKind.Unknown)
+                    .OrderByDescending(p => Path.GetFileName(p).IndexOf("shipping", StringComparison.OrdinalIgnoreCase) >= 0)
+                    .ThenByDescending(p => SafeLength(p))
+                    .FirstOrDefault();
+                if (withApi != null) return withApi;
+
+                return pool
+                    .OrderByDescending(p => Path.GetFileName(p).IndexOf("shipping", StringComparison.OrdinalIgnoreCase) >= 0)
+                    .ThenBy(p => RelativeDepth(p, root))
+                    .ThenByDescending(p => SafeLength(p))
+                    .FirstOrDefault();
+            }
+            catch (Exception e)
+            {
+                logger.Debug(e, $"Could not guess the executable of {game?.Name} from its install folder.");
+                return null;
+            }
+        }
+
+        private static void CollectExecutables(string dir, int depth, List<string> found)
+        {
+            if (found.Count >= 3000 || depth > 6) return;
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(dir, "*.exe", SearchOption.TopDirectoryOnly))
+                    found.Add(file);
+                foreach (var sub in Directory.EnumerateDirectories(dir))
+                {
+                    try
+                    {
+                        if ((File.GetAttributes(sub) & FileAttributes.ReparsePoint) != 0) continue;
+                    }
+                    catch { continue; }
+                    CollectExecutables(sub, depth + 1, found);
+                }
+            }
+            catch { /* locked folder: skip it */ }
+        }
+
+        private static bool IsGuessBlacklisted(string filePath, string root)
+        {
+            var file = Path.GetFileNameWithoutExtension(filePath).ToLowerInvariant();
+            if (GuessNameBlacklist.Any(file.Contains)) return true;
+            var relDir = (Path.GetDirectoryName(filePath) ?? string.Empty);
+            relDir = (relDir.Length > root.Length ? relDir.Substring(root.Length) : string.Empty).ToLowerInvariant();
+            return GuessDirBlacklist.Any(relDir.Contains);
+        }
+
+        private static int RelativeDepth(string filePath, string root)
+        {
+            var rel = filePath.Length > root.Length ? filePath.Substring(root.Length) : string.Empty;
+            return rel.Count(c => c == Path.DirectorySeparatorChar || c == Path.AltDirectorySeparatorChar);
+        }
+
+        private static long SafeLength(string path)
+        {
+            try { return new FileInfo(path).Length; } catch { return 0L; }
+        }
+
+        private static string NormalizeName(string s)
+        {
+            return new string((s ?? string.Empty).ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+        }
+
         public string ResolveStartedProcessPath(int? startedProcessId)
         {
             if (!startedProcessId.HasValue || startedProcessId.Value <= 0)
