@@ -12,6 +12,7 @@ This is a fork of [mjd4219/playnite-fps-limiter](https://github.com/mjd4219/play
 - **Reflex markers** control
 - **FreeSync handling** AMD only
 - **Special K integration:** automatic `SpecialK.ini` creation, a built-in ini editor with descriptions, local or global injection per game
+- **Fixed refresh-rate support:** helpful options for fixed refresh-rate monitors (refresh rate matching, low-lag vsync option)
 - **Special K updater:** checks the Nightly or Discord channel, updates the global install and also refreshes Special K DLLs injected locally into your Playnite games
 - **RTSS overlay preset** and RTSS profile access setup, so normal non-admin Playnite works
 - Hotkeys and a per-game settings panel
