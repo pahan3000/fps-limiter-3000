@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -705,11 +705,11 @@ namespace FPSLimiterSettingsUI
             var viewModel = DataContext as global::FPSLimiter.FPSLimiterSettingsViewModel;
             if (viewModel == null) return;
             SetActionButtonsEnabled(false);
-            SetExtensionUpdatesStatus("Downloading the FPS Limiter 3000 update…", true);
+            SetExtensionUpdatesStatus("Opening the GitHub releases page…", true);
             try
             {
                 await viewModel.UpdateExtensionNowAsync();
-                SetExtensionUpdatesStatus("If the download succeeded, confirm the install in Playnite's dialog and restart Playnite.", false);
+                SetExtensionUpdatesStatus("Opened the GitHub releases page. Download the .pext there and drag it onto Playnite.", false);
             }
             catch (Exception ex) { SetExtensionUpdatesStatus("Update failed: " + ex.Message, false); }
             finally { SetActionButtonsEnabled(true); }

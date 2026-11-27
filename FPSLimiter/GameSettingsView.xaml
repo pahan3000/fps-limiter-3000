@@ -1,8 +1,30 @@
-<UserControl xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" x:Class="FPSLimiter.GameSettingsView" mc:Ignorable="d" d:DesignWidth="480">
+<UserControl xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:local="clr-namespace:FPSLimiter" x:Class="FPSLimiter.GameSettingsView" mc:Ignorable="d" d:DesignWidth="480">
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="ExtensionTheme.xaml"/></ResourceDictionary.MergedDictionaries>
             <SolidColorBrush x:Key="FpsDanger" Color="#FFE05555"/>
+            <!-- Vector brand icons (from icon-artwork/*.svg): stay sharp under Fullscreen's UI scale, unlike the small PNGs. -->
+            <Pen x:Key="BrandIconPen" Brush="#FFDCDEDF" Thickness="1.65" StartLineCap="Round" EndLineCap="Round" LineJoin="Round"/>
+            <Pen x:Key="BrandIconPenThin" Brush="#FFDCDEDF" Thickness="1.25" StartLineCap="Round" EndLineCap="Round" LineJoin="Round"/>
+            <DrawingImage x:Key="RtssIconImage">
+                <DrawingImage.Drawing>
+                    <DrawingGroup>
+                        <GeometryDrawing Brush="Transparent" Geometry="M0,0 H24 V24 H0 Z"/>
+                        <GeometryDrawing Pen="{StaticResource BrandIconPen}"><GeometryDrawing.Geometry><RectangleGeometry Rect="1.7,3.6,20.6,14" RadiusX="1.25" RadiusY="1.25"/></GeometryDrawing.Geometry></GeometryDrawing>
+                        <GeometryDrawing Pen="{StaticResource BrandIconPen}" Geometry="M12,17.6 L12,20.5 M8.3,20.5 L15.7,20.5"/>
+                        <GeometryDrawing Pen="{StaticResource BrandIconPenThin}" Geometry="M4.9,6.8 L8,6.8 M4.9,9 L7.1,9"/>
+                    </DrawingGroup>
+                </DrawingImage.Drawing>
+            </DrawingImage>
+            <DrawingImage x:Key="SpecialKIconImage">
+                <DrawingImage.Drawing>
+                    <DrawingGroup>
+                        <GeometryDrawing Brush="Transparent" Geometry="M0,0 H24 V24 H0 Z"/>
+                        <GeometryDrawing Pen="{StaticResource BrandIconPen}"><GeometryDrawing.Geometry><EllipseGeometry Center="12,12" RadiusX="10" RadiusY="10"/></GeometryDrawing.Geometry></GeometryDrawing>
+                        <GeometryDrawing Pen="{StaticResource BrandIconPenThin}" Geometry="M8.8,4.7 C6.6,6 5.3,8.8 5.3,12 C5.3,15.2 6.6,18 8.8,19.3"/>
+                    </DrawingGroup>
+                </DrawingImage.Drawing>
+            </DrawingImage>
 
             <Style TargetType="CheckBox" BasedOn="{StaticResource OverlaySettingsSwitch}"/>
             <Style x:Key="FpsMutedText" TargetType="TextBlock">
@@ -64,11 +86,22 @@
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
                                 </Border>
                                 <Border x:Name="HoverOverlay" Background="#14FFFFFF" CornerRadius="5" Opacity="0" IsHitTestVisible="False"/>
+                                <!-- Controller / keyboard focus: bright ring + soft fill, visible on both the dark and the blue (selected) state. -->
+                                <Border x:Name="FocusFill" Background="#22FFFFFF" CornerRadius="5" Opacity="0" IsHitTestVisible="False"/>
+                                <Border x:Name="FocusRing" BorderBrush="{DynamicResource ReShadeText}" BorderThickness="2" CornerRadius="5" Opacity="0" IsHitTestVisible="False"/>
                             </Grid>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter TargetName="HoverOverlay" Property="Opacity" Value="1"/>
                                 </Trigger>
+                                <MultiTrigger>
+                                    <MultiTrigger.Conditions>
+                                        <Condition Property="IsKeyboardFocused" Value="True"/>
+                                        <Condition Property="local:FpsFocus.GamepadActive" Value="True"/>
+                                    </MultiTrigger.Conditions>
+                                    <Setter TargetName="FocusRing" Property="Opacity" Value="1"/>
+                                    <Setter TargetName="FocusFill" Property="Opacity" Value="1"/>
+                                </MultiTrigger>
                                 <Trigger Property="IsPressed" Value="True">
                                     <Setter TargetName="HoverOverlay" Property="Background" Value="#26FFFFFF"/>
                                     <Setter TargetName="HoverOverlay" Property="Opacity" Value="1"/>
@@ -113,6 +146,13 @@
                                     <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource FlatButtonBorderHover}"/>
                                 </Trigger>
                                 <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="FocusRing" Property="Opacity" Value="1"/></Trigger>
+                                <MultiTrigger>
+                                    <MultiTrigger.Conditions>
+                                        <Condition Property="IsKeyboardFocused" Value="True"/>
+                                        <Condition Property="local:FpsFocus.GamepadActive" Value="True"/>
+                                    </MultiTrigger.Conditions>
+                                    <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ReShadeText}"/>
+                                </MultiTrigger>
                                 <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bd" Property="Opacity" Value="0.8"/></Trigger>
                                 <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
                             </ControlTemplate.Triggers>
@@ -194,14 +234,14 @@
                         </Grid.ColumnDefinitions>
                         <Button x:Name="UseSpecialKButton" Grid.Column="0" Style="{StaticResource FpsBackendOption}" Click="OnUseSpecialKButtonClick">
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <Image x:Name="SpecialKButtonIcon" Width="18" Height="18" Margin="0,0,8,0" Stretch="Uniform"
+                                <Image x:Name="SpecialKButtonIcon" Source="{StaticResource SpecialKIconImage}" Width="18" Height="18" Margin="0,0,8,0" Stretch="Uniform"
                                        RenderOptions.BitmapScalingMode="HighQuality"/>
                                 <TextBlock Text="Special K"/>
                             </StackPanel>
                         </Button>
                         <Button x:Name="UseRtssButton" Grid.Column="2" Style="{StaticResource FpsBackendOption}" Click="OnUseRtssButtonClick">
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <Image x:Name="RtssButtonIcon" Width="18" Height="18" Margin="0,0,8,0" Stretch="Uniform"
+                                <Image x:Name="RtssButtonIcon" Source="{StaticResource RtssIconImage}" Width="18" Height="18" Margin="0,0,8,0" Stretch="Uniform"
                                        RenderOptions.BitmapScalingMode="HighQuality"/>
                                 <TextBlock Text="RTSS"/>
                             </StackPanel>
@@ -247,7 +287,7 @@
 
             </Expander><!-- RTSS sync belongs directly below the FPS controls. -->
             <!-- RTSS only -->
-            <Expander IsExpanded="False" Margin="0,6,0,0" Style="{StaticResource FpsSectionExpander}" x:Name="RtssPanel"><Expander.Header><StackPanel Orientation="Horizontal"><Image x:Name="RtssPanelIcon" Stretch="Uniform" Width="18" Height="18" Margin="0,0,13,0" RenderOptions.BitmapScalingMode="HighQuality"/><TextBlock Text="RTSS options" FontWeight="Normal" VerticalAlignment="Center"/>
+            <Expander IsExpanded="False" Margin="0,6,0,0" Style="{StaticResource FpsSectionExpander}" x:Name="RtssPanel"><Expander.Header><StackPanel Orientation="Horizontal"><Image x:Name="RtssPanelIcon" Source="{StaticResource RtssIconImage}" Stretch="Uniform" Width="18" Height="18" Margin="0,0,13,0" RenderOptions.BitmapScalingMode="HighQuality"/><TextBlock Text="RTSS options" FontWeight="Normal" VerticalAlignment="Center"/>
                     </StackPanel></Expander.Header><Border>
                 <StackPanel>
                     <Border Style="{StaticResource FpsRow}"><Grid>
@@ -279,7 +319,7 @@
             </Border>
 
             </Expander><!-- Special K only -->
-            <Expander IsExpanded="False" Margin="0,6,0,0" x:Name="SpecialKPanel"><Expander.Header><StackPanel Orientation="Horizontal"><Image x:Name="SpecialKPanelIcon" Stretch="Uniform" Width="18" Height="18" Margin="0,0,13,0" RenderOptions.BitmapScalingMode="HighQuality"/><TextBlock Text="Special K" FontWeight="Normal" VerticalAlignment="Center"/></StackPanel></Expander.Header>
+            <Expander IsExpanded="False" Margin="0,6,0,0" x:Name="SpecialKPanel"><Expander.Header><StackPanel Orientation="Horizontal"><Image x:Name="SpecialKPanelIcon" Source="{StaticResource SpecialKIconImage}" Stretch="Uniform" Width="18" Height="18" Margin="0,0,13,0" RenderOptions.BitmapScalingMode="HighQuality"/><TextBlock Text="Special K" FontWeight="Normal" VerticalAlignment="Center"/></StackPanel></Expander.Header>
                 <StackPanel>
                     <!-- General -->
                     <Expander IsExpanded="True" Margin="0,0,0,6"><Expander.Header><TextBlock Text="General"/></Expander.Header>
@@ -424,7 +464,7 @@
             </Expander><!-- VRR refresh-rate switching -->
 
             <DockPanel Margin="0,12,0,0" LastChildFill="False">
-                <Button DockPanel.Dock="Left" Padding="12,7" Margin="0,0,8,0" Click="OnGlobalSettingsClick"><StackPanel Orientation="Horizontal"><Path Data="{DynamicResource GearIconGeometry}" Stroke="{DynamicResource ReShadeText}" StrokeThickness="1.6" Stretch="Uniform" Width="16" Height="16" Margin="0,0,8,0"/><TextBlock Text="Global settings"/></StackPanel></Button><Button Content="Close" MinWidth="88" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="OnCloseClick"/>
+                <Button x:Name="GlobalSettingsButton" Style="{StaticResource FpsFlatButton}" Focusable="True" IsTabStop="True" DockPanel.Dock="Left" Padding="12,7" Margin="0,0,8,0" Click="OnGlobalSettingsClick"><StackPanel Orientation="Horizontal"><Path Data="{DynamicResource GearIconGeometry}" Stroke="{DynamicResource ReShadeText}" StrokeThickness="1.6" Stretch="Uniform" Width="16" Height="16" Margin="0,0,8,0"/><TextBlock Text="Global settings"/></StackPanel></Button><Button x:Name="CloseButton" Content="Close" Style="{StaticResource FpsFlatButton}" Focusable="True" IsTabStop="True" MinWidth="88" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="OnCloseClick"/>
             </DockPanel>
 
             </StackPanel>

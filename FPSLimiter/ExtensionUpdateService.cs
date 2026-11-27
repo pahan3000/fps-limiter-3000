@@ -4,12 +4,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Reflection;
-using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,17 +17,16 @@ using System.Windows.Threading;
 namespace FPSLimiter
 {
     /// <summary>
-    /// Keeps FPS Limiter 3000 itself up to date. Looks at the latest GitHub release of
-    /// pahan3000/fps-limiter-3000, downloads its .pext, verifies it, and hands it to Playnite's own
-    /// extension installer (Playnite asks for confirmation and a restart). Nothing is ever replaced
-    /// behind Playnite's back.
+    /// Tells the user when a newer FPS Limiter 3000 exists. Looks at the latest GitHub release of
+    /// pahan3000/fps-limiter-3000 and, when the user chooses to update, opens the GitHub releases page in
+    /// the browser. Nothing is downloaded or installed by the extension itself.
     /// </summary>
     public sealed class ExtensionUpdateService
     {
         private const string Owner = "pahan3000";
         private const string Repo = "fps-limiter-3000";
         private const string ExtensionId = "FPSLimiter_08c6a58f-461c-4629-850c-d07a820e26c1";
-        private const string TempFolderName = "FPSLimiter-ExtensionUpdate";
+        private const string ReleasesPageUrl = "https://github.com/" + Owner + "/" + Repo + "/releases/latest";
 
         private static readonly ILogger logger = LogManager.GetLogger();
         private static readonly Uri LatestReleaseApi =
@@ -67,10 +64,6 @@ namespace FPSLimiter
             public string Tag { get; set; }
             public string PageUrl { get; set; }
             public string Notes { get; set; }
-            public Uri PextUri { get; set; }
-            public string PextName { get; set; }
-            public long Size { get; set; }
-            public string Sha256 { get; set; }
         }
 
         public ExtensionUpdateService(
@@ -84,8 +77,6 @@ namespace FPSLimiter
             dispatcher = Application.Current != null
                 ? Application.Current.Dispatcher
                 : Dispatcher.CurrentDispatcher;
-            // Leftover downloads from an earlier session are no longer needed.
-            TryDeleteDirectory(Path.Combine(Path.GetTempPath(), TempFolderName));
         }
 
         // ---- Version helpers ---------------------------------------------------------------
@@ -202,7 +193,7 @@ namespace FPSLimiter
         /// <summary>Manual check from the settings page; always runs and always reports the result.</summary>
         public Task CheckNowAsync() { return CheckAsync(true, false); }
 
-        /// <summary>Manual check followed by download + hand-off to Playnite's installer.</summary>
+        /// <summary>Manual check followed by opening the GitHub releases page.</summary>
         public Task UpdateNowAsync() { return CheckAsync(true, true); }
 
         // ---- Core --------------------------------------------------------------------------
@@ -215,7 +206,6 @@ namespace FPSLimiter
                 await checkLock.WaitAsync().ConfigureAwait(false);
             }
 
-            string workDir = null;
             try
             {
                 var settings = settingsViewModel.Settings;
@@ -253,45 +243,27 @@ namespace FPSLimiter
                     if (manual)
                     {
                         ShowMessage("FPS Limiter 3000 " + tag + " is available (you have " + FormatVersion(installed) +
-                            ").\n\nUse \"Update FPS Limiter 3000\" to download and install it.",
+                            ").\n\nUse \"Update FPS Limiter 3000\" to open the GitHub releases page.",
                             "FPS Limiter 3000 updates", MessageBoxButton.OK, MessageBoxImage.Information);
                     }
                     return;
                 }
 
-                if (limiterService.HasRunningGamesPublic())
-                {
-                    ShowMessage("A game launched through Playnite is still running. Close it first - installing an " +
-                        "extension update requires restarting Playnite.",
-                        "FPS Limiter 3000 updates", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-
-                workDir = Path.Combine(Path.GetTempPath(), TempFolderName);
-                Directory.CreateDirectory(workDir);
-                string pextPath = Path.Combine(workDir, latest.PextName);
-                if (File.Exists(pextPath)) File.Delete(pextPath);
-
-                await DownloadAsync(latest.PextUri, pextPath).ConfigureAwait(false);
-                ValidatePext(pextPath, latest);
-
-                LaunchPlayniteInstaller(pextPath);
-                // The downloaded file must stay until Playnite has read it.
-                workDir = null;
-                logger.Info("Handed FPS Limiter 3000 " + tag + " to Playnite's extension installer.");
+                // Updates are done from GitHub: send the user to the release page.
+                OpenReleasePage(latest.PageUrl);
+                logger.Info("Opened the FPS Limiter 3000 " + tag + " release page.");
             }
             catch (Exception e)
             {
                 logger.Error(e, "Extension update check/install failed.");
                 if (manual)
                 {
-                    ShowMessage("Could not check or install the FPS Limiter 3000 update.\n\n" + e.Message,
+                    ShowMessage("Could not check for the FPS Limiter 3000 update.\n\n" + e.Message,
                         "FPS Limiter 3000 updates", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             finally
             {
-                if (!string.IsNullOrWhiteSpace(workDir)) TryDeleteDirectory(workDir);
                 checkLock.Release();
             }
         }
@@ -328,172 +300,33 @@ namespace FPSLimiter
                 throw new InvalidOperationException("The latest release tag \"" + release.TagName + "\" is not a version number.");
             }
 
-            var asset = (release.Assets ?? new List<GitHubAsset>())
-                .Where(a => a != null && !string.IsNullOrWhiteSpace(a.Name) &&
-                            a.Name.EndsWith(".pext", StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(a => a.Name.IndexOf("FPS", StringComparison.OrdinalIgnoreCase) >= 0)
-                .FirstOrDefault();
-            if (asset == null)
+            string page = release.HtmlUrl;
+            Uri pageUri;
+            if (!Uri.TryCreate(page, UriKind.Absolute, out pageUri) || !IsAllowedDownloadHost(pageUri))
             {
-                throw new InvalidOperationException("Release " + release.TagName + " has no .pext file attached.");
-            }
-
-            Uri uri;
-            if (!Uri.TryCreate(asset.DownloadUrl, UriKind.Absolute, out uri) || !IsAllowedDownloadHost(uri) ||
-                !uri.AbsolutePath.StartsWith("/" + Owner + "/" + Repo + "/", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("The release download link points somewhere unexpected.");
-            }
-
-            string safeName = Regex.Replace(Path.GetFileName(asset.Name), @"[^A-Za-z0-9._ -]", "_");
-            string sha = null;
-            if (!string.IsNullOrWhiteSpace(asset.Digest) &&
-                asset.Digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
-            {
-                sha = asset.Digest.Substring(7).Trim();
+                page = ReleasesPageUrl;
             }
 
             return new ReleaseInfo
             {
                 Version = version,
                 Tag = release.TagName,
-                PageUrl = release.HtmlUrl,
-                Notes = release.Body,
-                PextUri = uri,
-                PextName = safeName,
-                Size = asset.Size,
-                Sha256 = sha
+                PageUrl = page,
+                Notes = release.Body
             };
         }
 
-        private static async Task DownloadAsync(Uri uri, string destination)
+        private static void OpenReleasePage(string url)
         {
-            const long maxSize = 200L * 1024L * 1024L;
-            using (var client = CreateHttpClient(TimeSpan.FromMinutes(5)))
-            using (var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5)))
-            using (var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false))
-            {
-                response.EnsureSuccessStatusCode();
-                Uri finalUri = response.RequestMessage != null ? response.RequestMessage.RequestUri : uri;
-                if (!IsAllowedDownloadHost(finalUri))
-                {
-                    throw new InvalidOperationException("The download redirected to an unexpected host.");
-                }
-
-                long? length = response.Content.Headers.ContentLength;
-                if (length.HasValue && (length.Value < 1024 || length.Value > maxSize))
-                {
-                    throw new InvalidOperationException("The downloaded update has an unexpected file size.");
-                }
-
-                using (var input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
-                using (var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                {
-                    await input.CopyToAsync(output, 81920, timeout.Token).ConfigureAwait(false);
-                }
-            }
-
-            var info = new FileInfo(destination);
-            if (info.Length < 1024 || info.Length > maxSize)
-            {
-                throw new InvalidOperationException("The downloaded update has an unexpected file size.");
-            }
-        }
-
-        /// <summary>Checks hash (when GitHub provides one), zip structure, extension id and version.</summary>
-        private static void ValidatePext(string path, ReleaseInfo release)
-        {
-            if (!string.IsNullOrWhiteSpace(release.Sha256))
-            {
-                string actual;
-                using (var sha = SHA256.Create())
-                using (var stream = File.OpenRead(path))
-                {
-                    actual = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", string.Empty);
-                }
-
-                if (!string.Equals(actual, release.Sha256, StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new InvalidOperationException("The downloaded file failed its SHA-256 check. Nothing was installed.");
-                }
-            }
-
-            string yaml = null;
-            bool hasDll = false;
-            using (var archive = ZipFile.OpenRead(path))
-            {
-                foreach (var entry in archive.Entries)
-                {
-                    string name = (entry.FullName ?? string.Empty).Replace('\\', '/');
-                    if (name.IndexOf("..", StringComparison.Ordinal) >= 0 || name.StartsWith("/", StringComparison.Ordinal))
-                    {
-                        throw new InvalidOperationException("The update package contains an unsafe file path.");
-                    }
-
-                    if (string.Equals(name, "extension.yaml", StringComparison.OrdinalIgnoreCase))
-                    {
-                        using (var reader = new StreamReader(entry.Open()))
-                        {
-                            yaml = reader.ReadToEnd();
-                        }
-                    }
-                    else if (string.Equals(name, "FPSLimiter.dll", StringComparison.OrdinalIgnoreCase))
-                    {
-                        hasDll = true;
-                    }
-                }
-            }
-
-            if (yaml == null || !hasDll)
-            {
-                throw new InvalidOperationException("The downloaded file is not a valid FPS Limiter 3000 package.");
-            }
-
-            var id = Regex.Match(yaml, @"^\s*Id\s*:\s*(\S+)", RegexOptions.Multiline);
-            if (!id.Success || !string.Equals(id.Groups[1].Value, ExtensionId, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("The downloaded package is for a different extension. Nothing was installed.");
-            }
-
-            var ver = Regex.Match(yaml, @"^\s*Version\s*:\s*(.+?)\s*$", RegexOptions.Multiline);
-            Version packaged;
-            if (!ver.Success || !TryParseVersion(ver.Groups[1].Value, out packaged) || packaged < GetInstalledVersion())
-            {
-                throw new InvalidOperationException("The downloaded package is not newer than the installed version. Nothing was installed.");
-            }
-        }
-
-        private void LaunchPlayniteInstaller(string pextPath)
-        {
-            // Preferred: ask the running Playnite to install the package (it shows its own confirmation).
+            if (string.IsNullOrWhiteSpace(url)) url = ReleasesPageUrl;
             try
             {
-                if (playniteApi.ApplicationInfo.Mode == ApplicationMode.Desktop)
-                {
-                    string exe = Path.Combine(playniteApi.Paths.ApplicationPath, "Playnite.DesktopApp.exe");
-                    if (File.Exists(exe))
-                    {
-                        Process.Start(new ProcessStartInfo(exe, "\"" + pextPath + "\"") { UseShellExecute = false });
-                        return;
-                    }
-                }
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
             }
             catch (Exception e)
             {
-                logger.Warn("Could not start Playnite directly for the update: " + e.Message);
-            }
-
-            // Fallback: the .pext file association that Playnite registers.
-            try
-            {
-                Process.Start(new ProcessStartInfo(pextPath) { UseShellExecute = true });
-            }
-            catch (Exception e)
-            {
-                logger.Warn("Could not open the .pext file: " + e.Message);
-                try { Process.Start("explorer.exe", "/select,\"" + pextPath + "\""); } catch { }
-                throw new InvalidOperationException(
-                    "The update was downloaded to:\n" + pextPath + "\n\nDrag it onto Playnite to install it.");
+                logger.Warn("Could not open the releases page: " + e.Message);
+                throw new InvalidOperationException("Could not open your browser. Update manually at:\n" + url);
             }
         }
 
@@ -506,7 +339,7 @@ namespace FPSLimiter
 
             Action add = () => notifications.Add(new NotificationMessage(
                 "fpslimiter-extension-update-available",
-                "FPS Limiter 3000 " + tag + " is available. Click to install it.",
+                "FPS Limiter 3000 " + tag + " is available. Click to open the GitHub release page.",
                 NotificationType.Info,
                 () => { var ignored = PromptAndInstallAsync(); }));
 
@@ -518,7 +351,7 @@ namespace FPSLimiter
             try
             {
                 var answer = ShowMessage(
-                    "Install the FPS Limiter 3000 update now?\n\nPlaynite will ask you to confirm and then needs to restart.",
+                    "Open the FPS Limiter 3000 GitHub releases page to download the update?",
                     "FPS Limiter 3000 updates", MessageBoxButton.YesNo, MessageBoxImage.Question);
                 if (answer == MessageBoxResult.Yes)
                 {

@@ -22,6 +22,20 @@ namespace FPSLimiter
     /// selecting and going back did nothing. That type lives in Playnite.exe, not in the SDK, so it is read by
     /// reflection here.
     /// </summary>
+    /// <summary>
+    /// Inherited flag: true only in Playnite Fullscreen while the pad / keyboard (not the mouse) is driving
+    /// the UI. Focus rings that exist for controller users are shown only then, never on Desktop.
+    /// </summary>
+    public static class FpsFocus
+    {
+        public static readonly DependencyProperty GamepadActiveProperty = DependencyProperty.RegisterAttached(
+            "GamepadActive", typeof(bool), typeof(FpsFocus),
+            new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.Inherits));
+
+        public static bool GetGamepadActive(DependencyObject d) { return (bool)d.GetValue(GamepadActiveProperty); }
+        public static void SetGamepadActive(DependencyObject d, bool value) { d.SetValue(GamepadActiveProperty, value); }
+    }
+
     internal static class FullscreenController
     {
         private static bool resolved;

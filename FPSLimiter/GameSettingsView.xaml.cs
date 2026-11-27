@@ -71,6 +71,25 @@ namespace FPSLimiter
             window.Left -= delta / 2;
         }
 
+        // Controller focus rings: Fullscreen only, and only while pad/keyboard input is in use (mouse hides them).
+        private void SetupGamepadFocusVisuals()
+        {
+            bool fullscreen = limiterService.CurrentMode == PlayniteUiMode.Fullscreen;
+            FpsFocus.SetGamepadActive(this, fullscreen);
+            if (!fullscreen) return;
+            Point last = new Point(double.NaN, double.NaN);
+            PreviewMouseMove += (s, e) =>
+            {
+                var p = e.GetPosition(this);
+                if (!double.IsNaN(last.X) && (Math.Abs(p.X - last.X) > 2 || Math.Abs(p.Y - last.Y) > 2))
+                    FpsFocus.SetGamepadActive(this, false);
+                last = p;
+            };
+            PreviewMouseDown += (s, e) => FpsFocus.SetGamepadActive(this, false);
+            PreviewKeyDown += (s, e) => FpsFocus.SetGamepadActive(this, true);
+            KeyDown += (s, e) => FpsFocus.SetGamepadActive(this, true);
+        }
+
         private void OnViewLoaded(object sender, RoutedEventArgs e)
         {
             // Controller / keyboard navigation needs a starting focus; Fullscreen opens the dialog with none.
@@ -125,6 +144,30 @@ namespace FPSLimiter
 
                 if (comboOpen || focused is ComboBoxItem) return;
 
+                // Footer row (Global settings | Close): reach it and move inside it explicitly, so the D-pad can
+                // always get to Close even when WPF's directional search skips it.
+                if (GlobalSettingsButton != null && CloseButton != null)
+                {
+                    if (ReferenceEquals(focused, GlobalSettingsButton) && key == Key.Right)
+                    {
+                        e.Handled = true; CloseButton.Focus(); Keyboard.Focus(CloseButton); return;
+                    }
+                    if (ReferenceEquals(focused, CloseButton) && key == Key.Left)
+                    {
+                        e.Handled = true; GlobalSettingsButton.Focus(); Keyboard.Focus(GlobalSettingsButton); return;
+                    }
+                    bool inFooter = ReferenceEquals(focused, GlobalSettingsButton) || ReferenceEquals(focused, CloseButton);
+                    if (key == Key.Down && !inFooter && focused is UIElement downFrom && !(focused is ComboBox) && !(focused is Slider))
+                    {
+                        e.Handled = true;
+                        if (!downFrom.MoveFocus(new TraversalRequest(FocusNavigationDirection.Down)))
+                        {
+                            GlobalSettingsButton.Focus(); Keyboard.Focus(GlobalSettingsButton);
+                        }
+                        return;
+                    }
+                }
+
                 var dir = ArrowDirection(key);
                 if (dir.HasValue && (focused is ComboBox || focused is Slider))
                 {
@@ -171,6 +214,7 @@ namespace FPSLimiter
             WireAccordion(RtssPanel?.Parent as Panel);
             Loaded += OnViewLoaded;
             PreviewKeyDown += OnViewPreviewKeyDown;
+            SetupGamepadFocusVisuals();
             KeyDown += OnViewKeyDown;
             WireAccordion((SpecialKPanel?.Content as Panel));
 
@@ -553,12 +597,7 @@ namespace FPSLimiter
 
         private void ApplyBrandIcons()
         {
-            var rtss = BrandIcons.Rtss(18);
-            if (RtssButtonIcon != null && rtss != null) RtssButtonIcon.Source = rtss;
-            if (RtssPanelIcon != null && rtss != null) RtssPanelIcon.Source = rtss;
-            var sk = BrandIcons.SpecialK(18);
-            if (SpecialKButtonIcon != null && sk != null) SpecialKButtonIcon.Source = sk;
-            if (SpecialKPanelIcon != null && sk != null) SpecialKPanelIcon.Source = sk;
+            // Brand icons are vector DrawingImages declared in XAML (sharp at any scale); nothing to load.
         }
 
         private void UpdateBackendVisuals(bool useSpecialK)
