@@ -273,7 +273,7 @@
                     </Style>
       </ResourceDictionary>
     </UserControl.Resources>
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+    <ScrollViewer x:Name="MainScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                   Background="{DynamicResource ReShadeBg}">
         <StackPanel Margin="24,20,24,24" HorizontalAlignment="Stretch">
 

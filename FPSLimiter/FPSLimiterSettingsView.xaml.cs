@@ -13,6 +13,12 @@ namespace FPSLimiterSettingsUI
 {
     public partial class FPSLimiterSettingsView : UserControl
     {
+        /// <summary>Fullscreen: no visible scrollbar (wheel, stick and focus still scroll the page).</summary>
+        public void HideScrollBar()
+        {
+            if (MainScroll != null) MainScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
+        }
+
         public FPSLimiterSettingsView()
         {
             InitializeComponent();

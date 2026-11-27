@@ -315,15 +315,25 @@ namespace FPSLimiter
                 window = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
                 {
                     ShowMinimizeButton = false,
-                    ShowMaximizeButton = true
+                    // Fullscreen: same chrome as the per-game popup (no maximize / resize), which also drops the
+                    // white strip Playnite draws along the top of a resizable Fullscreen window.
+                    ShowMaximizeButton = !fullscreen
                 });
                 var shownWindow = window;
                 shownWindow.Title = "FPS Limiter 3000 — Settings";
-                shownWindow.Width = 760;
-                shownWindow.Height = 820;
-                shownWindow.MinWidth = 620;
-                shownWindow.MinHeight = 520;
-                shownWindow.ResizeMode = ResizeMode.CanResize;
+                // Fullscreen is viewed from a couch: scale the whole window up (kept within the screen height).
+                double globalScale = 1.0;
+                if (fullscreen)
+                {
+                    var work = SystemParameters.WorkArea;
+                    globalScale = Math.Max(1.0, work.Height / 1080.0) * 1.3;
+                    globalScale = Math.Max(1.0, Math.Min(globalScale, work.Height * 0.92 / 820.0));
+                }
+                shownWindow.Width = 760 * globalScale;
+                shownWindow.Height = 820 * globalScale;
+                shownWindow.MinWidth = 620 * globalScale;
+                shownWindow.MinHeight = 520 * globalScale;
+                shownWindow.ResizeMode = fullscreen ? ResizeMode.NoResize : ResizeMode.CanResize;
                 AppearancePalette.Apply(shownWindow, settings.Settings.ThemePreset, settings.Settings.GlassEffect);
                 shownWindow.SetResourceReference(Control.BackgroundProperty, "ReShadeBg");
                 themeChanged = (sender, e) =>
@@ -376,7 +386,10 @@ namespace FPSLimiter
                     cancel.Style = settingsButtonStyle;
                 }
                 dock.Children.Add(settingsView);
+                if (fullscreen) settingsView.HideScrollBar();
+                if (globalScale > 1.0) dock.LayoutTransform = new ScaleTransform(globalScale, globalScale);
                 shownWindow.Content = dock;
+                FpsFocus.Track(shownWindow, fullscreen);
 
                 // Same window in Desktop and Fullscreen: the layout, size and buttons are identical. The only
                 // Fullscreen-specific part is input. A / B arrive as Playnite controller events (Key.None), which

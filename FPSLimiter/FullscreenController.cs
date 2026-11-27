@@ -34,6 +34,28 @@ namespace FPSLimiter
 
         public static bool GetGamepadActive(DependencyObject d) { return (bool)d.GetValue(GamepadActiveProperty); }
         public static void SetGamepadActive(DependencyObject d, bool value) { d.SetValue(GamepadActiveProperty, value); }
+
+        /// <summary>
+        /// Turns the flag on for <paramref name="root"/> (a view or window) in Fullscreen, and off again as soon
+        /// as the mouse is used. On Desktop it stays off, so no focus rings / glows ever show there.
+        /// </summary>
+        public static void Track(UIElement root, bool fullscreen)
+        {
+            if (root == null) return;
+            SetGamepadActive(root, fullscreen);
+            if (!fullscreen) return;
+            Point last = new Point(double.NaN, double.NaN);
+            root.PreviewMouseMove += (s, e) =>
+            {
+                var p = e.GetPosition(root);
+                if (!double.IsNaN(last.X) && (Math.Abs(p.X - last.X) > 2 || Math.Abs(p.Y - last.Y) > 2))
+                    SetGamepadActive(root, false);
+                last = p;
+            };
+            root.PreviewMouseDown += (s, e) => SetGamepadActive(root, false);
+            root.PreviewKeyDown += (s, e) => SetGamepadActive(root, true);
+            root.KeyDown += (s, e) => SetGamepadActive(root, true);
+        }
     }
 
     internal static class FullscreenController

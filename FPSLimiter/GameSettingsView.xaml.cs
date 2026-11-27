@@ -74,20 +74,7 @@ namespace FPSLimiter
         // Controller focus rings: Fullscreen only, and only while pad/keyboard input is in use (mouse hides them).
         private void SetupGamepadFocusVisuals()
         {
-            bool fullscreen = limiterService.CurrentMode == PlayniteUiMode.Fullscreen;
-            FpsFocus.SetGamepadActive(this, fullscreen);
-            if (!fullscreen) return;
-            Point last = new Point(double.NaN, double.NaN);
-            PreviewMouseMove += (s, e) =>
-            {
-                var p = e.GetPosition(this);
-                if (!double.IsNaN(last.X) && (Math.Abs(p.X - last.X) > 2 || Math.Abs(p.Y - last.Y) > 2))
-                    FpsFocus.SetGamepadActive(this, false);
-                last = p;
-            };
-            PreviewMouseDown += (s, e) => FpsFocus.SetGamepadActive(this, false);
-            PreviewKeyDown += (s, e) => FpsFocus.SetGamepadActive(this, true);
-            KeyDown += (s, e) => FpsFocus.SetGamepadActive(this, true);
+            FpsFocus.Track(this, limiterService.CurrentMode == PlayniteUiMode.Fullscreen);
         }
 
         private void OnViewLoaded(object sender, RoutedEventArgs e)

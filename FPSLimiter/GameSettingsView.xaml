@@ -138,21 +138,14 @@
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
                                 <Border x:Name="HoverOverlay" Background="#0AFFFFFF" CornerRadius="{StaticResource FpsButtonRadius}" Opacity="0" IsHitTestVisible="False"/>
-                                <Border x:Name="FocusRing" BorderBrush="{DynamicResource ReShadeAccent}" BorderThickness="2" CornerRadius="{StaticResource FpsButtonRadius}" Opacity="0" IsHitTestVisible="False"/>
+                                <Border x:Name="FocusRing" BorderBrush="{DynamicResource ReShadeText}" BorderThickness="2" CornerRadius="{StaticResource FpsButtonRadius}" Opacity="0" IsHitTestVisible="False"/>
                             </Grid>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter TargetName="HoverOverlay" Property="Opacity" Value="1"/>
                                     <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource FlatButtonBorderHover}"/>
                                 </Trigger>
-                                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="FocusRing" Property="Opacity" Value="1"/></Trigger>
-                                <MultiTrigger>
-                                    <MultiTrigger.Conditions>
-                                        <Condition Property="IsKeyboardFocused" Value="True"/>
-                                        <Condition Property="local:FpsFocus.GamepadActive" Value="True"/>
-                                    </MultiTrigger.Conditions>
-                                    <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ReShadeText}"/>
-                                </MultiTrigger>
+                                <MultiTrigger><MultiTrigger.Conditions><Condition Property="IsKeyboardFocused" Value="True"/><Condition Property="local:FpsFocus.GamepadActive" Value="True"/></MultiTrigger.Conditions><Setter TargetName="FocusRing" Property="Opacity" Value="1"/></MultiTrigger>
                                 <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bd" Property="Opacity" Value="0.8"/></Trigger>
                                 <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
                             </ControlTemplate.Triggers>
@@ -197,10 +190,9 @@
                                 <Ellipse x:Name="Thumb" Width="{DynamicResource SwitchThumbSize}" Height="{DynamicResource SwitchThumbSize}" Fill="{DynamicResource SwitchThumbBrush}" HorizontalAlignment="Left" Margin="{DynamicResource GameSwitchThumbLeftMargin}" VerticalAlignment="Center"/>
                             </Grid>
                             <ControlTemplate.Triggers>
-                                <Trigger Property="IsKeyboardFocused" Value="True">
-                                    <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource ReShadeAccent}"/>
-                                    <Setter TargetName="Track" Property="Effect"><Setter.Value><DropShadowEffect Color="#FF4A9EFF" BlurRadius="10" ShadowDepth="0" Opacity="0.9"/></Setter.Value></Setter>
-                                </Trigger>
+                                <MultiTrigger><MultiTrigger.Conditions><Condition Property="IsKeyboardFocused" Value="True"/><Condition Property="local:FpsFocus.GamepadActive" Value="True"/></MultiTrigger.Conditions>
+                                    <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource ReShadeText}"/>
+                                </MultiTrigger>
                                 <Trigger Property="IsChecked" Value="True">
                                     <Setter TargetName="Track" Property="Background" Value="{DynamicResource SwitchTrackOnBrush}"/>
                                     <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource SwitchTrackOnBrush}"/>
