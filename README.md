@@ -4,6 +4,7 @@ A Playnite extension that caps the frame rate of games launched through Playnite
 
 This is a fork of [mjd4219/playnite-fps-limiter](https://github.com/mjd4219/playnite-fps-limiter). The original is an RTSS-only limiter; this fork adds a lot on top of it (see below). Credit for the original idea and base code goes to mjd4219.
 
+**AI SLOP. DONT EVEN BOTHER**
 ## Features
 
 - **Two backends:** RTSS and Special K, chosen globally or per game
