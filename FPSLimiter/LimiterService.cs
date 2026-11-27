@@ -371,6 +371,10 @@ namespace FPSLimiter
         /// <summary>Reapply when the game moves monitors OR the display resolution changes.</summary>
         public void UpdateRunningGameMonitors()
         {
+            // Called from a UI-thread timer every few seconds. With no game running there is nothing to track,
+            // and EnsureDetectedMonitors enumerates every display (plus VRR detection) on each call, which
+            // caused a periodic UI hitch even while idle in the library.
+            if (!HasRunningGames) return;
             Settings.EnsureDetectedMonitors(CurrentMode);
             foreach (var gameId in runningGameIds.ToList())
             {

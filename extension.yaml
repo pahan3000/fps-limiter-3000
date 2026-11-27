@@ -1,7 +1,0 @@
-Id: FPSLimiter_08c6a58f-461c-4629-850c-d07a820e26c1
-Name: FPS Limiter 3000
-Author: pahan3000 (fork of mjd4219)
-Version: 1.0.2
-Module: FPSLimiter.dll
-Type: GenericPlugin
-Icon: icon.png

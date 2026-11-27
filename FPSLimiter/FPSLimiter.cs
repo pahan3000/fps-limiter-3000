@@ -625,18 +625,42 @@ namespace FPSLimiter
             Task.Run(() => limiterService.RetargetAfterLaunch(args.Game, args.SourceAction, args.StartedProcessId));
         }
 
+        // Bumped on every selection change so stale background work can tell it was superseded.
+        private int topBarIconRequest;
+
         public override void OnGameSelected(OnGameSelectedEventArgs args)
         {
             base.OnGameSelected(args);
             var selectedGames = args?.NewValue?.Where(game => game != null).ToList() ?? new List<Game>();
-            try
+
+            // Deciding which backend icon to show probes Special K (process enumeration, folder checks,
+            // optional Vulkan / anti-cheat scans). Doing that inside a blocking UIDispatcher.Invoke made every
+            // step of the game list wait for it, which is what felt like scroll lag. Instead: debounce rapid
+            // selection changes, do the probing on a worker thread, and touch the UI only to flip visibility.
+            var ticket = System.Threading.Interlocked.Increment(ref topBarIconRequest);
+            Task.Run(async () =>
             {
-                PlayniteApi.MainView?.UIDispatcher?.Invoke(() => ApplyTopBarIcon(selectedGames));
-            }
-            catch (Exception ex)
-            {
-                logger.Warn("Could not update the top-bar icon for the selected game: " + ex.Message);
-            }
+                try
+                {
+                    await Task.Delay(150).ConfigureAwait(false);
+                    if (ticket != System.Threading.Volatile.Read(ref topBarIconRequest)) return;
+
+                    var useSk = ShouldUseSpecialKForTopBar(selectedGames);
+                    if (ticket != System.Threading.Volatile.Read(ref topBarIconRequest)) return;
+
+                    var dispatcher = PlayniteApi.MainView?.UIDispatcher;
+                    if (dispatcher == null) return;
+                    dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (ticket != System.Threading.Volatile.Read(ref topBarIconRequest)) return;
+                        ApplyTopBarIconState(useSk);
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn("Could not update the top-bar icon for the selected game: " + ex.Message);
+                }
+            });
         }
 
         public override void OnGameStartupCancelled(OnGameStartupCancelledEventArgs args)
@@ -824,8 +848,17 @@ namespace FPSLimiter
         {
             try
             {
+                ApplyTopBarIconState(ShouldUseSpecialKForTopBar(selectedGames));
+            }
+            catch (Exception ex) { logger.Warn("Could not update FPS Limiter top-bar icon: " + ex.Message); }
+        }
+
+        /// <summary>UI-thread only and cheap: flips which top-bar item is visible. No probing here.</summary>
+        private void ApplyTopBarIconState(bool useSk)
+        {
+            try
+            {
                 var show = settings?.Settings?.ShowTopBarIcon != false;
-                var useSk = ShouldUseSpecialKForTopBar(selectedGames);
                 if (topPanelVisibilitySupported)
                 {
                     SetTopPanelVisibility(rtssTopPanelItem, show && !useSk);
