@@ -88,7 +88,7 @@
                                 <Border x:Name="HoverOverlay" Background="#14FFFFFF" CornerRadius="5" Opacity="0" IsHitTestVisible="False"/>
                                 <!-- Controller / keyboard focus: bright ring + soft fill, visible on both the dark and the blue (selected) state. -->
                                 <Border x:Name="FocusFill" Background="#22FFFFFF" CornerRadius="5" Opacity="0" IsHitTestVisible="False"/>
-                                <Border x:Name="FocusRing" BorderBrush="{DynamicResource ReShadeText}" BorderThickness="2" CornerRadius="5" Opacity="0" IsHitTestVisible="False"/>
+                                <Border x:Name="FocusRing" BorderBrush="{DynamicResource UiFocusRing}" BorderThickness="2" CornerRadius="5" Opacity="0" IsHitTestVisible="False"/>
                             </Grid>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
@@ -115,9 +115,9 @@
                 </Setter>
             </Style>
             <Style x:Key="FpsBackendSelected" TargetType="Button" BasedOn="{StaticResource FpsBackendOption}">
-                <Setter Property="Background" Value="{DynamicResource UiPrimary}"/>
-                <Setter Property="BorderBrush" Value="{DynamicResource UiPrimary}"/>
-                <Setter Property="Foreground" Value="{DynamicResource UiPrimaryText}"/>
+                <Setter Property="Background" Value="{DynamicResource SelectedBg}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource SelectedBorder}"/>
+                <Setter Property="Foreground" Value="{DynamicResource SelectedFg}"/>
             </Style>
             <!-- Flat, thin-rimmed button (no raised gradient). Hover is an overlay so it also works on the selected one. -->
             <CornerRadius x:Key="FpsButtonRadius">7</CornerRadius>
@@ -138,7 +138,7 @@
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
                                 <Border x:Name="HoverOverlay" Background="#0AFFFFFF" CornerRadius="{StaticResource FpsButtonRadius}" Opacity="0" IsHitTestVisible="False"/>
-                                <Border x:Name="FocusRing" BorderBrush="{DynamicResource ReShadeText}" BorderThickness="2" CornerRadius="{StaticResource FpsButtonRadius}" Opacity="0" IsHitTestVisible="False"/>
+                                <Border x:Name="FocusRing" BorderBrush="{DynamicResource UiFocusRing}" BorderThickness="2" CornerRadius="{StaticResource FpsButtonRadius}" Opacity="0" IsHitTestVisible="False"/>
                             </Grid>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
@@ -160,14 +160,21 @@
                 <Setter Property="HorizontalAlignment" Value="Stretch"/>
             </Style>
             <Style x:Key="FpsPresetButtonActive" TargetType="Button" BasedOn="{StaticResource FpsPresetButton}">
-                <Setter Property="Background" Value="{DynamicResource UiPrimary}"/>
-                <Setter Property="BorderBrush" Value="{DynamicResource UiPrimary}"/>
-                <Setter Property="Foreground" Value="{DynamicResource UiPrimaryText}"/>
+                <Setter Property="Background" Value="{DynamicResource SelectedBg}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource SelectedBorder}"/>
+                <Setter Property="Foreground" Value="{DynamicResource SelectedFg}"/>
             </Style>
             <Style x:Key="FpsActionButton" TargetType="Button" BasedOn="{StaticResource FpsFlatButton}">
                 <Setter Property="MinHeight" Value="36"/>
                 <Setter Property="Margin" Value="3"/>
                 <Setter Property="Padding" Value="4,6"/>
+            </Style>
+            <Style x:Key="FpsBrandStroke" TargetType="Path">
+                <Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                <Setter Property="StrokeThickness" Value="1.65"/>
+                <Setter Property="StrokeLineJoin" Value="Round"/>
+                <Setter Property="StrokeStartLineCap" Value="Round"/>
+                <Setter Property="StrokeEndLineCap" Value="Round"/>
             </Style>
             <Style x:Key="FpsBtnIcon" TargetType="Path">
                 <Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
@@ -226,16 +233,20 @@
                         </Grid.ColumnDefinitions>
                         <Button x:Name="UseSpecialKButton" Grid.Column="0" Style="{StaticResource FpsBackendOption}" Click="OnUseSpecialKButtonClick">
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <Image x:Name="SpecialKButtonIcon" Source="{StaticResource SpecialKIconImage}" Width="18" Height="18" Margin="0,0,8,0" Stretch="Uniform"
-                                       RenderOptions.BitmapScalingMode="HighQuality"/>
-                                <TextBlock Text="Special K"/>
+                                <Viewbox x:Name="SpecialKButtonIcon" Width="18" Height="18" Margin="0,0,8,0"><Canvas Width="24" Height="24">
+                                    <Path Style="{StaticResource FpsBrandStroke}" Data="M12,2 A10,10 0 1 1 12,22 A10,10 0 1 1 12,2 Z"/>
+                                    <Path Style="{StaticResource FpsBrandStroke}" StrokeThickness="1.25" Data="M8.8,4.7 C6.6,6 5.3,8.8 5.3,12 C5.3,15.2 6.6,18 8.8,19.3"/>
+                                </Canvas></Viewbox>
+                                <TextBlock Text="Special K" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                             </StackPanel>
                         </Button>
                         <Button x:Name="UseRtssButton" Grid.Column="2" Style="{StaticResource FpsBackendOption}" Click="OnUseRtssButtonClick">
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <Image x:Name="RtssButtonIcon" Source="{StaticResource RtssIconImage}" Width="18" Height="18" Margin="0,0,8,0" Stretch="Uniform"
-                                       RenderOptions.BitmapScalingMode="HighQuality"/>
-                                <TextBlock Text="RTSS"/>
+                                <Viewbox x:Name="RtssButtonIcon" Width="18" Height="18" Margin="0,0,8,0"><Canvas Width="24" Height="24">
+                                    <Path Style="{StaticResource FpsBrandStroke}" Data="M2.95,3.6 H21.05 A1.25,1.25 0 0 1 22.3,4.85 V16.35 A1.25,1.25 0 0 1 21.05,17.6 H2.95 A1.25,1.25 0 0 1 1.7,16.35 V4.85 A1.25,1.25 0 0 1 2.95,3.6 Z M12,17.6 L12,20.5 M8.3,20.5 L15.7,20.5"/>
+                                    <Path Style="{StaticResource FpsBrandStroke}" StrokeThickness="1.25" Data="M4.9,6.8 L8,6.8 M4.9,9 L7.1,9"/>
+                                </Canvas></Viewbox>
+                                <TextBlock Text="RTSS" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                             </StackPanel>
                         </Button>
                     </Grid>
@@ -253,7 +264,7 @@
             <Expander IsExpanded="True" Margin="0,6,0,0" Style="{StaticResource FpsSectionExpander}"><Expander.Header><StackPanel Orientation="Horizontal"><Path Data="{DynamicResource SpeedIconGeometry}" Stroke="{DynamicResource ReShadeText}" StrokeThickness="1.6" Stretch="Uniform" Width="18" Height="18" Margin="0,0,13,0"/><TextBlock x:Name="FpsCapHeading" Text="FPS cap" FontWeight="Normal" VerticalAlignment="Center"/>
                     </StackPanel></Expander.Header><Border Style="{StaticResource FpsPlain}">
                 <StackPanel>
-                    <TextBlock x:Name="CurrentFpsText" FontWeight="Normal" Foreground="{DynamicResource ReShadeAccent}" Margin="0,8,0,10"/>
+                    <TextBlock x:Name="CurrentFpsText" FontWeight="Normal" Foreground="{DynamicResource ReShadeAccent}" Margin="0,8,0,10" Cursor="Hand" ToolTip="Double-click to edit" MouseLeftButtonDown="OnCurrentFpsMouseDown"/>
                     <ItemsControl x:Name="PresetList">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -418,9 +429,14 @@
                     </Expander>
                 </StackPanel>
             </Expander>
-            <Expander IsExpanded="False" Margin="0,6,0,0" Style="{StaticResource FpsSectionExpander}" x:Name="PerGameRefreshPanel"><Expander.Header><StackPanel Orientation="Horizontal"><Path Data="{DynamicResource UpdateIconGeometry}" Stroke="{DynamicResource ReShadeText}" StrokeThickness="1.6" Stretch="Uniform" Width="18" Height="18" Margin="0,0,13,0"/><TextBlock Text="Manage refresh rate" FontWeight="Normal" VerticalAlignment="Center"/>
+            <Expander IsExpanded="False" Margin="0,6,0,0" Style="{StaticResource FpsSectionExpander}" x:Name="PerGameRefreshPanel"><Expander.Header><StackPanel Orientation="Horizontal"><Path Data="{DynamicResource DisplayIconGeometry}" Stroke="{DynamicResource ReShadeText}" StrokeThickness="1.6" Stretch="Uniform" Width="18" Height="18" Margin="0,0,13,0"/><TextBlock Text="Display" FontWeight="Normal" VerticalAlignment="Center"/>
                     </StackPanel></Expander.Header><Border>
                 <StackPanel>
+                    <Border Style="{StaticResource FpsRow}"><StackPanel>
+                    <TextBlock Text="Resolution" Margin="0,0,0,6"/>
+                    <ComboBox x:Name="ForcedResolutionCombo" SelectionChanged="OnForcedResolutionChanged"/>
+                    <TextBlock Style="{StaticResource FpsMutedText}" Margin="0,4,0,0" TextWrapping="Wrap" Text="Optional resolution for this game. Restored when the game stops."/>
+                    </StackPanel></Border>
                     <StackPanel x:Name="RefreshRatesRows">
                     <Border Style="{StaticResource FpsRow}"><StackPanel>
                     <TextBlock Margin="0,0,0,2" Text="Low Hz VRR"/>
@@ -442,7 +458,7 @@
                     </StackPanel></Border>
                     <Border Style="{StaticResource FpsRow}"><StackPanel Orientation="Horizontal">
                         <TextBlock Text="Exact Sync Hz" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBox x:Name="ExactSyncHzBox" Width="95" HorizontalAlignment="Left" LostFocus="OnExactSyncHzChanged" ToolTip="Optional per-game exact signal Hz, e.g. 29.9001. Blank uses the monitor's global exact Hz (or automatic detection). Does not change the Windows display mode."/>
+                        <TextBox x:Name="ExactSyncHzBox" Width="95" HorizontalAlignment="Left" LostFocus="OnExactSyncHzChanged" DataObject.Pasting="OnExactSyncHzPasting" ToolTip="Optional per-game exact signal Hz, e.g. 29.9001. Blank uses the monitor's global exact Hz (or automatic detection). Does not change the Windows display mode."/>
                         
                     </StackPanel></Border>
                 </StackPanel>

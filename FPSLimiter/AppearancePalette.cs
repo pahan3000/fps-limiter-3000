@@ -17,6 +17,7 @@ namespace FPSLimiter
         {
             bool windows = string.Equals(preset, "Windows 11", StringComparison.OrdinalIgnoreCase);
             bool steamDark = string.Equals(preset, "Steam Dark", StringComparison.OrdinalIgnoreCase);
+            bool oled = string.Equals(preset, "OLED", StringComparison.OrdinalIgnoreCase);
             target.Resources["Windows11Only"] = windows ? Visibility.Visible : Visibility.Collapsed;
             target.Resources["SteamOnly"] = windows ? Visibility.Collapsed : Visibility.Visible;
             target.Resources["UiEmphasisFontWeight"] = FontWeights.Normal;
@@ -56,6 +57,7 @@ namespace FPSLimiter
             target.Resources["GameSwitchThumbRightMargin"] = windows ? new Thickness(0, 0, 4, 0) : new Thickness(0, 0, 3, 0);
             Set(target, "UiPrimary", windows ? "#FF4CC2FF" : "#FF2F65A0");
             Set(target, "UiPrimaryText", windows ? "#FF101010" : "#FFF1F4FA");
+            Set(target, "UiPrimaryHover", windows ? "#FF80D3FF" : "#FF3A78BE");
             Set(target, "SwitchTrackOffBrush", windows ? "#FF202020" : "#FF3D4149");
             Set(target, "SwitchTrackBorderBrush", windows ? "#FF8C8C8C" : "#003D4149");
             Set(target, "UiStatusBg", windows ? "#FF2B2B2B" : "#FF1E2A3A");
@@ -88,15 +90,71 @@ namespace FPSLimiter
                 Set(target, "UiStatusBg", "#FF1C2633");
             }
 
+            // OLED: true-black window. Neutral monochrome, no blue anywhere. Surfaces step up in clear
+            // gray levels (window < card < control < hover) so the layers do not blend together.
+            // Selection is an inverted light fill with dark text instead of an outlined/glowing tint.
+            if (oled)
+            {
+                Set(target, "ReShadeBg", "#FF000000");
+                Set(target, "ReShadePanelBg", "#FF111111");
+                Set(target, "ReShadeBorder", "#FF343434");
+                Set(target, "ReShadeBorderHover", "#FF4A4A4A");
+                Set(target, "ReShadeText", "#FFE6E6E6");
+                Set(target, "ReShadeTextMuted", "#FF9A9A9A");
+                Set(target, "ReShadeAccent", "#FFE6E6E6");
+                Set(target, "ReShadeAccentHover", "#FFFFFFFF");
+                Set(target, "ReShadeAccentPress", "#FFBDBDBD");
+                Set(target, "ReShadeAccentSoft", "#FF1E1E1E");
+                Set(target, "ReShadeControlBg", "#FF1C1C1C");
+                Set(target, "ReShadeControlHover", "#FF2A2A2A");
+                Set(target, "UiCard", "#FF111111");
+                Set(target, "UiCardHover", "#FF1F1F1F");
+                Set(target, "UiHeaderHover", "#FF1B1B1B");
+                Set(target, "UiExpandedHeader", "#FF1A1A1A");
+                Set(target, "ComboBorderHover", "#FF5A5A5A");
+                Set(target, "ComboSelectedBg", "#FF2C2C2C");
+                Set(target, "UiBorder", "#FF2C2C2C");
+                Set(target, "UiBorderHover", "#FF4A4A4A");
+                Set(target, "UiDivider", "#FF2E2E2E");
+                Set(target, "UiButton", "#FF1C1C1C");
+                Set(target, "UiStatusBg", "#FF121212");
+                Set(target, "UiAccent", "#FFE6E6E6");
+                Set(target, "UiPrimary", "#FFE6E6E6");
+                Set(target, "UiPrimaryText", "#FF000000");
+                Set(target, "UiPrimaryHover", "#FFFFFFFF");
+                Set(target, "SwitchTrackOffBrush", "#FF262626");
+                Set(target, "SwitchTrackOnBrush", "#FFE6E6E6");
+                Set(target, "SwitchThumbOnBrush", "#FF000000");
+                Set(target, "GameSwitchTrackOff", "#FF262626");
+                Set(target, "GameSwitchTrackBorder", "#FF4A4A4A");
+                Set(target, "GameSwitchThumbOn", "#FF000000");
+                // "Installed" badges: neutral instead of green.
+                Set(target, "BadgeOkBg", "#1FFFFFFF");
+                Set(target, "BadgeOkBorder", "#40FFFFFF");
+                Set(target, "BadgeOkText", "#FFE6E6E6");
+                // Selected preset / backend: solid light fill, dark text.
+                Set(target, "SelectedBg", "#FFE6E6E6");
+                Set(target, "SelectedBorder", "#FFE6E6E6");
+                Set(target, "SelectedFg", "#FF000000");
+                Set(target, "UiFocusRing", "#FF8C8C8C");
+            }
+            else
+            {
+                Set(target, "BadgeOkBg", "#263DCF7A");
+                Set(target, "BadgeOkBorder", "#663DCF7A");
+                Set(target, "BadgeOkText", "#FF3DCF7A");
+            }
+
             // Keep dropdown menus opaque, even when the surrounding surfaces use glass.
-            Set(target, "UiPopupBg", windows ? "#FF2B2B2B" : steamDark ? "#FF202329" : "#FF23262E");
+            Set(target, "UiPopupBg", windows ? "#FF2B2B2B" : oled ? "#FF121212" : steamDark ? "#FF202329" : "#FF23262E");
 
             if (glass)
             {
                 Color bg = windows ? Color.FromRgb(0x20, 0x20, 0x20)
+                         : oled ? Color.FromRgb(0x00, 0x00, 0x00)
                          : steamDark ? Color.FromRgb(0x16, 0x18, 0x1D)
                          : Color.FromRgb(0x17, 0x1D, 0x25);
-                Color glow = windows ? GetWindowsAccent() : Color.FromRgb(0x4A, 0x9E, 0xFF);
+                Color glow = windows ? GetWindowsAccent() : oled ? Color.FromRgb(0x8C, 0x8C, 0x8C) : Color.FromRgb(0x4A, 0x9E, 0xFF);
                 Func<byte, Color> white = alpha => Color.FromArgb(alpha, 0xFF, 0xFF, 0xFF);
 
                 SetBrush(target, "ReShadeBg", Diagonal(
@@ -139,9 +197,19 @@ namespace FPSLimiter
                 Set(target, "UiDivider", white(0x1E));
 
                 Color popup = windows ? Color.FromRgb(0x2B, 0x2B, 0x2B)
+                            : oled ? Color.FromRgb(0x12, 0x12, 0x12)
                             : steamDark ? Color.FromRgb(0x20, 0x23, 0x29)
                             : Color.FromRgb(0x23, 0x26, 0x2E);
                 Set(target, "ComboSelectedBg", Mix(popup, glow, 0.24));
+            }
+
+            // Selected-state brushes follow the accent in every preset except OLED (set above).
+            if (!oled)
+            {
+                target.Resources["SelectedBg"] = target.Resources["ReShadeAccentSoft"];
+                target.Resources["SelectedBorder"] = target.Resources["ReShadeAccent"];
+                target.Resources["SelectedFg"] = target.Resources["ReShadeText"];
+                target.Resources["UiFocusRing"] = target.Resources["ReShadeText"];
             }
 
             // Existing FPS Limiter templates use Fps-prefixed brush names.
@@ -186,7 +254,8 @@ namespace FPSLimiter
             }
             if (!glass) return;
             bool windows = string.Equals(preset, "Windows 11", StringComparison.OrdinalIgnoreCase);
-            Color glow = windows ? GetWindowsAccent() : Color.FromRgb(0x4A, 0x9E, 0xFF);
+            bool oledPreset = string.Equals(preset, "OLED", StringComparison.OrdinalIgnoreCase);
+            Color glow = windows ? GetWindowsAccent() : oledPreset ? Color.FromRgb(0x8C, 0x8C, 0x8C) : Color.FromRgb(0x4A, 0x9E, 0xFF);
             Func<byte, Color> tint = alpha => Color.FromArgb(alpha, glow.R, glow.G, glow.B);
             SetBrush(target, "UiExpandedHeader", Diagonal(Stop(tint(0x2A), 0.0), Stop(tint(0x10), 1.0)));
         }
@@ -233,6 +302,8 @@ namespace FPSLimiter
                 Set(target, "FpsAccent", accent);
                 Set(target, "UiPrimary", accent);
                 Set(target, "UiPrimaryText", text);
+                Set(target, "UiPrimaryHover", Mix(accent, Colors.White, 0.15));
+                Set(target, "SelectedBorder", accent);
                 Set(target, "SwitchTrackOnBrush", accent);
                 Set(target, "SwitchThumbOnBrush", text);
                 Set(target, "GameSwitchThumbOn", text);

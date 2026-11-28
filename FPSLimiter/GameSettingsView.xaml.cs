@@ -270,6 +270,8 @@ namespace FPSLimiter
                 }
                 if (!string.Equals(CurrentFpsText.Text, text, StringComparison.Ordinal))
                     CurrentFpsText.Text = text;
+                if (games != null && games.Count > 0)
+                    CurrentFpsText.ToolTip = (limiterService.DescribeLimitSource(games[0]) + "\n\nDouble-click to edit").Trim();
                 if (IsVisible) UpdatePresetHighlight();
             }
             catch { /* cosmetic */ }
@@ -307,6 +309,12 @@ namespace FPSLimiter
                 e.PropertyName == nameof(FPSLimiterSettings.ApplySpecialKSettingsToExistingProfiles))
             {
                 Dispatcher.BeginInvoke(new Action(ApplySpecialKOverrideState));
+            }
+            if (e.PropertyName == nameof(FPSLimiterSettings.LimitInputUnit))
+            {
+                // FPS <-> frametime: re-render "Current" and the preset labels in the new unit.
+                Dispatcher.BeginInvoke(new Action(() => { if (IsLoaded) RefreshFromService(); }));
+                return;
             }
             if (e.PropertyName != nameof(FPSLimiterSettings.RtssScanlineSyncTarget)) return;
             Dispatcher.BeginInvoke(new Action(() =>
@@ -476,7 +484,7 @@ namespace FPSLimiter
             if (FreeSyncRow != null) FreeSyncRow.Visibility = freeSyncRowVisible ? Visibility.Visible : Visibility.Collapsed;
             if (RefreshRatesRows != null) RefreshRatesRows.Visibility = fixedRefresh ? Visibility.Visible : Visibility.Collapsed;
             if (PerGameRefreshPanel != null)
-                PerGameRefreshPanel.Visibility = fixedRefresh || freeSyncRowVisible ? Visibility.Visible : Visibility.Collapsed;
+                PerGameRefreshPanel.Visibility = Visibility.Visible; // always: it now holds the resolution picker
             var silent = profile != null && profile.HasSteamLogSilentOverride
                 ? profile.SpecialKSteamLogSilent
                 : limiterService.Settings.SpecialKSteamLogSilent;
@@ -571,13 +579,13 @@ namespace FPSLimiter
             {
                 var number = (double)btn.Tag;
                 btn.Content = scanline
-                    ? (half ? number / 2.0 : number).ToString("0.####", CultureInfo.InvariantCulture) + " FPS"
+                    ? LimitUnits.Format(half ? number / 2.0 : number)
                     : FormatFps(number);
             }
             if (CurrentFpsText != null)
                 SetFpsText(profile != null && profile.SkipLimiterInjection ? "Current: Don't inject"
                     : scanline && forcedHz > 0 && !(profile?.GetMode(limiterService.CurrentMode)?.Enabled == true && profile.GetMode(limiterService.CurrentMode).FrameLimit == 0)
-                    ? "Current: " + (half ? forcedHz / 2.0 : forcedHz).ToString("0.####", CultureInfo.InvariantCulture) + " FPS"
+                    ? "Current: " + LimitUnits.Format(half ? forcedHz / 2.0 : forcedHz)
                     : currentLimit.HasValue ? "Current: " + FormatFps(currentLimit.Value)
                     : "Current: none (global / disabled)");
         }
@@ -941,19 +949,49 @@ namespace FPSLimiter
         /// <summary>Set by the extension so dialogs get Playnite's dark window chrome.</summary>
         public Func<Window> CreateDialogWindow { get; set; }
 
+        private void OnCurrentFpsMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (e.ClickCount != 2) return;
+            e.Handled = true;
+            OnCustomClick(sender, e);
+        }
+
         private void OnCustomClick(object sender, RoutedEventArgs e)
         {
             double? current = games.Count > 0 ? limiterService.GetEffectiveLimit(games[0]) : (double?)null;
             var input = new TextBox
             {
-                Text = (current ?? 60).ToString("0.####", CultureInfo.InvariantCulture),
+                Text = LimitUnits.FormatNumber(current ?? 60),
                 MinHeight = 36,
                 Padding = new Thickness(10, 6, 10, 6),
                 VerticalContentAlignment = VerticalAlignment.Center
             };
+            // Numbers only: digits and one decimal separator; pasted text is reduced to its first number.
+            var numberOnly = new System.Text.RegularExpressions.Regex(@"^\d*\.?\d*$");
+            input.PreviewTextInput += (_, te) =>
+            {
+                var t = te.Text.Replace(',', '.');
+                var next = input.Text.Remove(input.SelectionStart, input.SelectionLength).Insert(input.SelectionStart, t);
+                if (!numberOnly.IsMatch(next)) te.Handled = true;
+                else if (t != te.Text) { te.Handled = true; var at = input.SelectionStart; input.Text = next; input.CaretIndex = at + t.Length; }
+            };
+            input.PreviewKeyDown += (_, ke) => { if (ke.Key == Key.Space) ke.Handled = true; };
+            DataObject.AddPastingHandler(input, (_, pe) =>
+            {
+                var pasted = (pe.DataObject.GetData(DataFormats.UnicodeText) as string ?? string.Empty).Trim().Replace(',', '.');
+                var m = System.Text.RegularExpressions.Regex.Match(pasted, @"\d+(?:\.\d+)?");
+                pe.CancelCommand();
+                if (!m.Success) return;
+                var at = input.SelectionStart;
+                var next = input.Text.Remove(at, input.SelectionLength).Insert(at, m.Value);
+                if (!numberOnly.IsMatch(next)) return;
+                input.Text = next;
+                input.CaretIndex = at + m.Value.Length;
+            });
+            InputMethod.SetIsInputMethodEnabled(input, false);
             var prompt = new TextBlock
             {
-                Text = "FPS cap (e.g. 60 or 59.9)",
+                Text = LimitUnits.IsFrametime ? "Frametime cap in ms (e.g. 16.67 for 60 FPS)" : "FPS cap (e.g. 60 or 59.9)",
                 Margin = new Thickness(0, 0, 0, 8),
                 TextWrapping = TextWrapping.Wrap
             };
@@ -990,7 +1028,7 @@ namespace FPSLimiter
             Window dialog = null;
             try { dialog = CreateDialogWindow?.Invoke(); } catch { }
             if (dialog == null) dialog = new Window();
-            dialog.Title = "Custom FPS";
+            dialog.Title = LimitUnits.IsFrametime ? "Custom frametime" : "Custom FPS";
             dialog.Content = root;
             dialog.Width = 340;
             dialog.SizeToContent = SizeToContent.Height;
@@ -1002,8 +1040,7 @@ namespace FPSLimiter
             double cap = 0;
             ok.Click += (_, __) =>
             {
-                var text = (input.Text ?? "").Trim().Replace(',', '.');
-                if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out cap) || cap <= 0 || cap > 1000)
+                if (!LimitUnits.TryParseLimit(input.Text, false, out cap) || cap > 1000)
                 {
                     error.Visibility = Visibility.Visible;
                     input.Focus();
@@ -1046,7 +1083,7 @@ namespace FPSLimiter
 
         private static string FormatFps(double fps)
         {
-            return fps.ToString("0.####", CultureInfo.InvariantCulture) + " FPS";
+            return LimitUnits.Format(fps);
         }
         private bool loadingInjection;
 
@@ -1188,6 +1225,7 @@ namespace FPSLimiter
                     }
                 }
                 ForcedRefreshCombo.SelectedIndex = selected;
+                LoadForcedResolutionCombo(deviceName);
 
                 var profile = games != null && games.Count > 0
                     ? limiterService.GetGameProfile(games[0]) : null;
@@ -1198,6 +1236,42 @@ namespace FPSLimiter
             finally { loadingForcedRefresh = false; }
         }
 
+        private void LoadForcedResolutionCombo(string deviceName)
+        {
+            ForcedResolutionCombo.Items.Clear();
+            ForcedResolutionCombo.Items.Add(new ComboBoxItem { Content = "Default (no change)", Tag = "0x0" });
+            var currentMode = RefreshRateManager.GetCurrentMode(deviceName);
+            foreach (var r in RefreshRateManager.GetSupportedResolutions(deviceName))
+            {
+                var text = r.Width + " × " + r.Height;
+                if (currentMode != null && currentMode.Width == r.Width && currentMode.Height == r.Height) text += " (current)";
+                ForcedResolutionCombo.Items.Add(new ComboBoxItem { Content = text, Tag = r.Width + "x" + r.Height });
+            }
+
+            var selected = 0;
+            var p = games != null && games.Count > 0 ? limiterService.GetGameProfile(games[0]) : null;
+            if (p != null && p.ForcedWidth > 0 && p.ForcedHeight > 0)
+            {
+                var key = p.ForcedWidth + "x" + p.ForcedHeight;
+                for (int i = 1; i < ForcedResolutionCombo.Items.Count; i++)
+                {
+                    var item = ForcedResolutionCombo.Items[i] as ComboBoxItem;
+                    if (item != null && string.Equals(item.Tag as string, key, StringComparison.Ordinal)) { selected = i; break; }
+                }
+            }
+            ForcedResolutionCombo.SelectedIndex = selected;
+        }
+
+        private void OnForcedResolutionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (loadingForcedRefresh || games == null || games.Count == 0 || limiterService == null) return;
+            var item = ForcedResolutionCombo.SelectedItem as ComboBoxItem;
+            var parts = (item?.Tag as string ?? "0x0").Split('x');
+            int w, h;
+            if (parts.Length != 2 || !int.TryParse(parts[0], out w) || !int.TryParse(parts[1], out h)) { w = 0; h = 0; }
+            limiterService.SetGameForcedResolution(games, w, h);
+        }
+
         private void OnForcedRefreshChanged(object sender, SelectionChangedEventArgs e)
         {
             if (loadingForcedRefresh || games == null || games.Count == 0 || limiterService == null)
@@ -1206,6 +1280,21 @@ namespace FPSLimiter
             var hz = item != null && item.Tag is int ? (int)item.Tag : 0;
             limiterService.SetGameForcedRefreshRate(games, hz);
             RefreshFromService();
+        }
+
+        private void OnExactSyncHzPasting(object sender, DataObjectPastingEventArgs e)
+        {
+            var box = (TextBox)sender;
+            var pasted = (e.DataObject.GetData(DataFormats.UnicodeText) as string ?? string.Empty).Trim().Replace(',', '.');
+            double ignored;
+            if (double.TryParse(pasted, NumberStyles.Float, CultureInfo.InvariantCulture, out ignored)) return;
+            // "refresh-rate: 50 Hz" -> "50"
+            var match = System.Text.RegularExpressions.Regex.Match(pasted, @"\d+(?:\.\d+)?");
+            e.CancelCommand();
+            if (!match.Success) return;
+            var start = box.SelectionStart;
+            box.Text = box.Text.Remove(start, box.SelectionLength).Insert(start, match.Value);
+            box.CaretIndex = start + match.Value.Length;
         }
 
         private void OnExactSyncHzChanged(object sender, RoutedEventArgs e)

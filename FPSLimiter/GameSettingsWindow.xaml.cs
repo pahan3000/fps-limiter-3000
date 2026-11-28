@@ -337,15 +337,22 @@ namespace FPSLimiter
             }
         }
 
+        private void OnCurrentFpsMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (e.ClickCount != 2) return;
+            e.Handled = true;
+            OnCustomClick(sender, e);
+        }
+
         private void OnCustomClick(object sender, RoutedEventArgs e)
         {
-            var input = new TextBox { Text = "60", Width = 120, Margin = new Thickness(0, 8, 0, 0) };
+            var input = new TextBox { Text = LimitUnits.FormatNumber(60), Width = 120, Margin = new Thickness(0, 8, 0, 0) };
             var panel = new StackPanel();
-            panel.Children.Add(new TextBlock { Text = "Enter FPS cap (e.g. 60 or 59.9):" });
+            panel.Children.Add(new TextBlock { Text = LimitUnits.IsFrametime ? "Enter frametime cap in ms (e.g. 16.67 for 60 FPS):" : "Enter FPS cap (e.g. 60 or 59.9):" });
             panel.Children.Add(input);
             var dialog = new Window
             {
-                Title = "Custom FPS",
+                Title = LimitUnits.IsFrametime ? "Custom frametime" : "Custom FPS",
                 Content = panel,
                 SizeToContent = SizeToContent.WidthAndHeight,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -360,8 +367,7 @@ namespace FPSLimiter
                 return;
             }
 
-            if (!double.TryParse(input.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var cap) ||
-                cap <= 0 || cap > 1000)
+            if (!LimitUnits.TryParseLimit(input.Text, false, out var cap) || cap > 1000)
             {
                 MessageBox.Show("Enter a number between 1 and 1000.", "FPS Limiter 3000");
                 return;
@@ -390,7 +396,7 @@ namespace FPSLimiter
 
         private static string FormatFps(double fps)
         {
-            return fps.ToString("0.####", CultureInfo.InvariantCulture) + " FPS";
+            return LimitUnits.Format(fps);
         }
     }
 }

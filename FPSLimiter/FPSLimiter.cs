@@ -380,9 +380,7 @@ namespace FPSLimiter
                 var settingsButtonStyle = settingsView.TryFindResource(typeof(Button)) as Style;
                 if (settingsButtonStyle != null)
                 {
-                    save.Style = settingsButtonStyle;
-                    save.SetResourceReference(Control.BackgroundProperty, "UiPrimary");
-                    save.SetResourceReference(Control.ForegroundProperty, "UiPrimaryText");
+                    save.Style = (settingsView.TryFindResource("PrimaryActionButton") as Style) ?? settingsButtonStyle;
                     cancel.Style = settingsButtonStyle;
                 }
                 dock.Children.Add(settingsView);
@@ -554,7 +552,7 @@ namespace FPSLimiter
 
                     default:
                         limiterService.SetGameLimit(games, binding.FrameLimit);
-                        logger.Info($"FPS Limiter hotkey {binding.DisplayText}: {FormatFps(binding.FrameLimit)} FPS applied to {DescribeGames(games)}.");
+                        logger.Info($"FPS Limiter hotkey {binding.DisplayText}: {LimitUnits.Format(binding.FrameLimit)} applied to {DescribeGames(games)}.");
                         break;
                 }
             }
@@ -1150,11 +1148,11 @@ namespace FPSLimiter
                 var mode = profile?.GetMode(CurrentMode);
                 if (mode != null && mode.Enabled && mode.FrameLimit == preset)
                 {
-                    return $"{ActiveMenuPrefix}{presetText} FPS";
+                    return $"{ActiveMenuPrefix}{presetText} {LimitUnits.Suffix}";
                 }
             }
 
-            return $"{presetText} FPS";
+            return $"{presetText} {LimitUnits.Suffix}";
         }
 
         private string GetCustomMenuText(List<Game> games)
@@ -1168,11 +1166,11 @@ namespace FPSLimiter
                     mode.FrameLimit > 0 &&
                     !limiterService.GetPresets(games[0]).Contains(mode.FrameLimit))
                 {
-                    return $"{ActiveMenuPrefix}Custom FPS cap...";
+                    return $"{ActiveMenuPrefix}Custom {LimitUnits.CapNoun}...";
                 }
             }
 
-            return "Custom FPS cap...";
+            return "Custom " + LimitUnits.CapNoun + "...";
         }
 
         /// <summary>
@@ -1191,11 +1189,11 @@ namespace FPSLimiter
                 if (limiterService.IsGlobalLimitEnabledForGame(game) &&
                     limiterService.GlobalFrameLimitForGame(game) > 0)
                 {
-                    label = $"Use global FPS cap ({category}: {FormatFps(limiterService.GlobalFrameLimitForGame(game))} FPS)";
+                    label = $"Use global {LimitUnits.CapNoun} ({category}: {LimitUnits.Format(limiterService.GlobalFrameLimitForGame(game))})";
                 }
                 else
                 {
-                    label = $"Use global FPS cap ({category}: Global off)";
+                    label = $"Use global {LimitUnits.CapNoun} ({category}: Global off)";
                 }
 
                 var profile = limiterService.GetGameProfile(game);
@@ -1209,12 +1207,12 @@ namespace FPSLimiter
                 return label;
             }
 
-            return "Use global FPS cap";
+            return "Use global " + LimitUnits.CapNoun;
         }
 
         private void SetCustomCap(List<Game> games)
         {
-            var defaultValue = "60";
+            var defaultValue = LimitUnits.FormatNumber(60);
             if (games.Count == 1)
             {
                 var profile = limiterService.GetGameProfile(games[0]);
@@ -1225,16 +1223,20 @@ namespace FPSLimiter
                 }
             }
 
-            var result = PlayniteApi.Dialogs.SelectString("Enter an FPS cap between 1 and 1000. Decimals are allowed, e.g. 59.9.", "FPS Limiter 3000", defaultValue);
+            var result = PlayniteApi.Dialogs.SelectString(
+                LimitUnits.IsFrametime
+                    ? "Enter a frametime cap in ms (1–1000). Decimals are allowed, e.g. 16.67 for 60 FPS."
+                    : "Enter an FPS cap between 1 and 1000. Decimals are allowed, e.g. 59.9.",
+                "FPS Limiter 3000", defaultValue);
             if (!result.Result)
             {
                 return;
             }
 
             double cap;
-            if (!double.TryParse(result.SelectedString, NumberStyles.Float, CultureInfo.InvariantCulture, out cap) || cap <= 0 || cap > 1000)
+            if (!LimitUnits.TryParseLimit(result.SelectedString, false, out cap) || cap > 1000)
             {
-                PlayniteApi.Dialogs.ShowErrorMessage("Enter a number between 1 and 1000, e.g. 60 or 59.9.", "FPS Limiter 3000");
+                PlayniteApi.Dialogs.ShowErrorMessage("Enter a number between 1 and 1000, e.g. " + LimitUnits.ExampleText + ".", "FPS Limiter 3000");
                 return;
             }
 
@@ -1243,7 +1245,7 @@ namespace FPSLimiter
 
         private static string FormatFps(double value)
         {
-            return value.ToString("0.####", CultureInfo.InvariantCulture);
+            return LimitUnits.FormatNumber(value);
         }
 
         private void ChooseManualExecutable(List<Game> games)
@@ -1312,10 +1314,10 @@ namespace FPSLimiter
             if (limiterService.IsGlobalLimitEnabledFor(windowsGames, device) &&
                 limiterService.GlobalFrameLimitFor(windowsGames, device) == preset)
             {
-                return $"{ActiveMenuPrefix}{presetText} FPS";
+                return $"{ActiveMenuPrefix}{presetText} {LimitUnits.Suffix}";
             }
 
-            return $"{presetText} FPS";
+            return $"{presetText} {LimitUnits.Suffix}";
         }
 
         private string GetGlobalCustomMenuText(bool windowsGames, string device = null)
@@ -1325,19 +1327,19 @@ namespace FPSLimiter
                 limit > 0 &&
                 !limiterService.GetPresetsForMonitor(device).Contains(limit))
             {
-                return $"{ActiveMenuPrefix}Custom FPS cap...";
+                return $"{ActiveMenuPrefix}Custom {LimitUnits.CapNoun}...";
             }
 
-            return "Custom FPS cap...";
+            return "Custom " + LimitUnits.CapNoun + "...";
         }
 
         private void SetGlobalCustomCap(bool windowsGames, string device = null)
         {
             var current = limiterService.GlobalFrameLimitFor(windowsGames, device);
-            var defaultValue = current > 0 ? FormatFps(current) : "60";
+            var defaultValue = current > 0 ? FormatFps(current) : LimitUnits.FormatNumber(60);
             var category = windowsGames ? "Windows games" : "Non-Windows games";
             var result = PlayniteApi.Dialogs.SelectString(
-                $"Enter a global FPS cap for {category} (1–1000). Decimals are allowed, e.g. 59.9.",
+                $"Enter a global {LimitUnits.CapNoun} for {category} (1–1000{(LimitUnits.IsFrametime ? " ms" : "")}). Decimals are allowed, e.g. {LimitUnits.ExampleText}.",
                 "FPS Limiter 3000",
                 defaultValue);
             if (!result.Result)
@@ -1346,9 +1348,9 @@ namespace FPSLimiter
             }
 
             double cap;
-            if (!double.TryParse(result.SelectedString, NumberStyles.Float, CultureInfo.InvariantCulture, out cap) || cap <= 0 || cap > 1000)
+            if (!LimitUnits.TryParseLimit(result.SelectedString, false, out cap) || cap > 1000)
             {
-                PlayniteApi.Dialogs.ShowErrorMessage("Enter a number between 1 and 1000, e.g. 60 or 59.9.", "FPS Limiter 3000");
+                PlayniteApi.Dialogs.ShowErrorMessage("Enter a number between 1 and 1000, e.g. " + LimitUnits.ExampleText + ".", "FPS Limiter 3000");
                 return;
             }
 

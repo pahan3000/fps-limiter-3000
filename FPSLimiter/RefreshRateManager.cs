@@ -159,6 +159,26 @@ namespace FPSLimiter
             return rates;
         }
 
+        /// <summary>Distinct resolutions (width, height) the display offers at the current color depth, largest first.</summary>
+        public static List<DisplayModeInfo> GetSupportedResolutions(string deviceName)
+        {
+            var result = new List<DisplayModeInfo>();
+            var current = new DEVMODE();
+            current.dmSize = (short)Marshal.SizeOf(current);
+            if (!EnumDisplaySettings(NormalizeDevice(deviceName), ENUM_CURRENT_SETTINGS, ref current)) return result;
+
+            var dm = new DEVMODE();
+            dm.dmSize = (short)Marshal.SizeOf(dm);
+            for (int modeNum = 0; EnumDisplaySettings(NormalizeDevice(deviceName), modeNum, ref dm); modeNum++)
+            {
+                if (dm.dmBitsPerPel != current.dmBitsPerPel || dm.dmPelsWidth <= 0 || dm.dmPelsHeight <= 0) continue;
+                var w = dm.dmPelsWidth; var h = dm.dmPelsHeight;
+                if (!result.Any(r => r.Width == w && r.Height == h))
+                    result.Add(new DisplayModeInfo { Width = w, Height = h });
+            }
+            return result.OrderByDescending(r => (long)r.Width * r.Height).ThenByDescending(r => r.Width).ToList();
+        }
+
         private const int DM_PELSWIDTH = 0x80000;
         private const int DM_PELSHEIGHT = 0x100000;
         private const uint CDS_TEST = 0x2;

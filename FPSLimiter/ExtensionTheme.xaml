@@ -26,6 +26,14 @@
     <SolidColorBrush x:Key="UiPopupBg"            Color="#FF23262E"/>
     <SolidColorBrush x:Key="ReShadeDisabled"     Color="#FF55555E"/>
     <SolidColorBrush x:Key="ReShadeSuccess"      Color="#FF3DCF7A"/>
+    <SolidColorBrush x:Key="BadgeOkBg"           Color="#263DCF7A"/>
+    <SolidColorBrush x:Key="BadgeOkBorder"       Color="#663DCF7A"/>
+    <SolidColorBrush x:Key="BadgeOkText"         Color="#FF3DCF7A"/>
+    <SolidColorBrush x:Key="UiPrimaryHover"      Color="#FF3A78BE"/>
+    <SolidColorBrush x:Key="SelectedBg"          Color="#FF1A2A40"/>
+    <SolidColorBrush x:Key="SelectedBorder"      Color="#FF4A9EFF"/>
+    <SolidColorBrush x:Key="SelectedFg"          Color="#FFDCDEDF"/>
+    <SolidColorBrush x:Key="UiFocusRing"         Color="#FFDCDEDF"/>
 
     <!-- Defaults are overridden locally for the selected appearance preset. -->
     <FontWeight x:Key="UiEmphasisFontWeight">Normal</FontWeight>
@@ -68,6 +76,7 @@
     <!-- Special K: monogram K -->
     <Geometry x:Key="SpecialKIconGeometry">M6,4 L6,20 M6,12 L18,4 M6,12 L18,20</Geometry>
     <Geometry x:Key="CubeIconGeometry">M12,2 L21,7 L21,17 L12,22 L3,17 L3,7 Z M3,7 L12,12 L21,7 M12,12 L12,22</Geometry>
+    <Geometry x:Key="DisplayIconGeometry">M3,4 L21,4 L21,16 L3,16 Z M8,20 L16,20 M12,16 L12,20 M9,13 L15,7 M11,7 L15,7 L15,11</Geometry>
     <Geometry x:Key="UpdateIconGeometry">M20,8 A8,8 0 0 0 6,6 L3,9 M3,4 L3,9 L8,9 M4,16 A8,8 0 0 0 18,18 L21,15 M21,20 L21,15 L16,15</Geometry>
     <Geometry x:Key="DownloadIconGeometry">M12,3 L12,16 M7,11 L12,16 L17,11 M3,18 L3,21 L21,21 L21,18</Geometry>
     <Geometry x:Key="ClockIconGeometry">M12,2 A10,10 0 1 0 12,22 A10,10 0 1 0 12,2 M12,6 L12,12 L16,14</Geometry>
@@ -170,6 +179,47 @@
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource ReShadeBg}"/>
+                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource ReShadeBorder}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource ReShadeDisabled}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Primary action button (Save, Reinstall, ...). Own hover/press so the label stays readable:
+         the generic Button template swaps the fill to a dark gray on hover, which hid the dark label of a light primary button. -->
+    <Style x:Key="PrimaryActionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="{DynamicResource UiPrimary}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource UiPrimary}"/>
+        <Setter Property="Foreground" Value="{DynamicResource UiPrimaryText}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="border"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="5">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="border" Property="Background" Value="{DynamicResource UiPrimaryHover}"/>
+                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource UiPrimaryHover}"/>
+                        </Trigger>
+                        <MultiTrigger><MultiTrigger.Conditions><Condition Property="IsKeyboardFocused" Value="True"/><Condition Property="local:FpsFocus.GamepadActive" Value="True"/></MultiTrigger.Conditions>
+                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource UiFocusRing}"/>
+                            <Setter TargetName="border" Property="BorderThickness" Value="2"/>
+                        </MultiTrigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="border" Property="Background" Value="{DynamicResource ReShadeAccentPress}"/>
+                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource ReShadeAccentPress}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="border" Property="Background" Value="{DynamicResource ReShadeControlBg}"/>
                             <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource ReShadeBorder}"/>
                             <Setter Property="Foreground" Value="{DynamicResource ReShadeDisabled}"/>
                         </Trigger>
@@ -476,6 +526,7 @@
         <Setter Property="ItemContainerStyle">
             <Setter.Value>
                 <Style TargetType="ComboBoxItem">
+                    <Setter Property="local:ComboBoxBehaviors.SuppressHoverScroll" Value="True"/>
                     <Setter Property="FontWeight" Value="Normal"/>
         <Setter Property="FontFamily" Value="{DynamicResource FontFamily}"/>
                     <Setter Property="Foreground" Value="{DynamicResource ReShadeText}"/>

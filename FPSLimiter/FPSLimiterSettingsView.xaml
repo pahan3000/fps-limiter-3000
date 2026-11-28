@@ -13,6 +13,7 @@
           <ResourceDictionary Source="ExtensionTheme.xaml"/>
         </ResourceDictionary.MergedDictionaries>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <local:LimitDisplayConverter x:Key="LimitDisplay" />
         <Style x:Key="DownloadCard" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource UiCard}"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -46,23 +47,21 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
         <Style x:Key="BadgeGreen" TargetType="Border" BasedOn="{StaticResource BadgeBase}">
-            <Setter Property="Background" Value="#263DCF7A"/>
-            <Setter Property="BorderBrush" Value="#663DCF7A"/>
+            <Setter Property="Background" Value="{DynamicResource BadgeOkBg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BadgeOkBorder}"/>
         </Style>
         <Style x:Key="BadgeTextGreen" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
             <Setter Property="FontSize" Value="{DynamicResource FontSizeSmall}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#FF3DCF7A"/>
+            <Setter Property="Foreground" Value="{DynamicResource BadgeOkText}"/>
         </Style>
         <Style x:Key="CardSecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="MinWidth" Value="108"/>
             <Setter Property="Margin" Value="8,0,0,0"/>
         </Style>
-        <Style x:Key="CardPrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Style x:Key="CardPrimaryButton" TargetType="Button" BasedOn="{StaticResource PrimaryActionButton}">
             <Setter Property="MinWidth" Value="108"/>
             <Setter Property="Margin" Value="8,0,0,0"/>
-            <Setter Property="Background" Value="{DynamicResource UiPrimary}"/>
-            <Setter Property="Foreground" Value="{DynamicResource UiPrimaryText}"/>
         </Style>
         <Style x:Key="HotkeyCaptureTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
             <Setter Property="Foreground" Value="{DynamicResource ReShadeText}"/>
@@ -128,66 +127,84 @@
         <!-- The selected monitor/resolution shares one compact pair of game-type rows. -->
         <DataTemplate x:Key="MonitorLimitRows">
             <StackPanel>
-                <Border Background="{DynamicResource UiCard}" CornerRadius="4" Padding="16,12" Margin="0,0,0,5">
+                <Border Background="{DynamicResource UiCard}" BorderBrush="{DynamicResource ReShadeBorder}" BorderThickness="1"
+                        CornerRadius="8" Padding="18,14,18,16" Margin="0,0,0,8">
                     <StackPanel>
-                        <Grid Margin="0,0,0,10">
-                            <TextBlock Text="Windows games" VerticalAlignment="Center"/>
+                        <Grid>
+                            <TextBlock Text="Windows games" FontWeight="SemiBold" VerticalAlignment="Center"/>
                             <CheckBox Content="On" IsChecked="{Binding Windows.Enabled}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                         </Grid>
+                        <Border BorderBrush="{DynamicResource UiDivider}" BorderThickness="0,1,0,0" Margin="0,12,0,12"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/>
-                                <ColumnDefinition Width="2*"/><ColumnDefinition Width="12"/>
-                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="200"/><ColumnDefinition Width="14"/>
+                                <ColumnDefinition Width="*"/><ColumnDefinition Width="14"/>
+                                <ColumnDefinition Width="170"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock Text="FPS limit" Style="{StaticResource CardDesc}" Margin="0,0,0,4"/>
-                                <TextBox Text="{Binding Windows.FrameLimitText, UpdateSourceTrigger=PropertyChanged}"
-                                         IsEnabled="{Binding Windows.Enabled}" HorizontalContentAlignment="Center" MinHeight="36"/>
+                                <TextBlock Text="{Binding Source={x:Static local:LimitUnits.State}, Path=LimitLabel}" Style="{StaticResource CardDesc}" Margin="2,0,0,6"/>
+                                <Grid>
+                                    <TextBox Text="{Binding Windows.FrameLimitText, UpdateSourceTrigger=PropertyChanged}"
+                                             IsEnabled="{Binding Windows.Enabled}" HorizontalContentAlignment="Left" VerticalContentAlignment="Center"
+                                             Padding="12,0,40,0" MinHeight="40"/>
+                                    <TextBlock Text="{Binding Source={x:Static local:LimitUnits.State}, Path=Suffix}" IsHitTestVisible="False"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"
+                                               Foreground="{DynamicResource ReShadeTextMuted}"/>
+                                </Grid>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
-                                <TextBlock Text="Sync" Style="{StaticResource CardDesc}" Margin="0,0,0,4"/>
+                                <TextBlock Text="Sync" Style="{StaticResource CardDesc}" Margin="2,0,0,6"/>
                                 <ComboBox ItemsSource="{Binding DataContext.SyncModeOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                           ItemTemplate="{StaticResource SyncModeOptionTemplate}" SelectedValuePath="Value"
-                                          SelectedValue="{Binding Windows.SyncMode}" IsEnabled="{Binding Windows.Enabled}" MinHeight="36"/>
+                                          SelectedValue="{Binding Windows.SyncMode}" IsEnabled="{Binding Windows.Enabled}"
+                                          HorizontalContentAlignment="Left" MinHeight="40"/>
                             </StackPanel>
                             <StackPanel Grid.Column="4">
-                                <TextBlock Text="Reflex" Style="{StaticResource CardDesc}" Margin="0,0,0,4"/>
+                                <TextBlock Text="Reflex" Style="{StaticResource CardDesc}" Margin="2,0,0,6"/>
                                 <ComboBox ItemsSource="{Binding DataContext.ReflexMarkerOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                           DisplayMemberPath="DisplayName" SelectedValuePath="Value"
-                                          SelectedValue="{Binding Windows.ReflexMarkers}" MinHeight="36"/>
+                                          SelectedValue="{Binding Windows.ReflexMarkers}" HorizontalContentAlignment="Left" MinHeight="40"/>
                             </StackPanel>
                         </Grid>
                     </StackPanel>
                 </Border>
-                <Border Background="{DynamicResource UiCard}" CornerRadius="4" Padding="16,12" Margin="0,0,0,5">
+                <Border Background="{DynamicResource UiCard}" BorderBrush="{DynamicResource ReShadeBorder}" BorderThickness="1"
+                        CornerRadius="8" Padding="18,14,18,16" Margin="0,0,0,8">
                     <StackPanel>
-                        <Grid Margin="0,0,0,10">
-                            <TextBlock Text="Non-Windows games" VerticalAlignment="Center"/>
+                        <Grid>
+                            <TextBlock Text="Non-Windows games" FontWeight="SemiBold" VerticalAlignment="Center"/>
                             <CheckBox Content="On" IsChecked="{Binding NonWindows.Enabled}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                         </Grid>
+                        <Border BorderBrush="{DynamicResource UiDivider}" BorderThickness="0,1,0,0" Margin="0,12,0,12"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/>
-                                <ColumnDefinition Width="2*"/><ColumnDefinition Width="12"/>
-                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="200"/><ColumnDefinition Width="14"/>
+                                <ColumnDefinition Width="*"/><ColumnDefinition Width="14"/>
+                                <ColumnDefinition Width="170"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock Text="FPS limit" Style="{StaticResource CardDesc}" Margin="0,0,0,4"/>
-                                <TextBox Text="{Binding NonWindows.FrameLimitText, UpdateSourceTrigger=PropertyChanged}"
-                                         IsEnabled="{Binding NonWindows.Enabled}" HorizontalContentAlignment="Center" MinHeight="36"/>
+                                <TextBlock Text="{Binding Source={x:Static local:LimitUnits.State}, Path=LimitLabel}" Style="{StaticResource CardDesc}" Margin="2,0,0,6"/>
+                                <Grid>
+                                    <TextBox Text="{Binding NonWindows.FrameLimitText, UpdateSourceTrigger=PropertyChanged}"
+                                             IsEnabled="{Binding NonWindows.Enabled}" HorizontalContentAlignment="Left" VerticalContentAlignment="Center"
+                                             Padding="12,0,40,0" MinHeight="40"/>
+                                    <TextBlock Text="{Binding Source={x:Static local:LimitUnits.State}, Path=Suffix}" IsHitTestVisible="False"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"
+                                               Foreground="{DynamicResource ReShadeTextMuted}"/>
+                                </Grid>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
-                                <TextBlock Text="Sync" Style="{StaticResource CardDesc}" Margin="0,0,0,4"/>
+                                <TextBlock Text="Sync" Style="{StaticResource CardDesc}" Margin="2,0,0,6"/>
                                 <ComboBox ItemsSource="{Binding DataContext.SyncModeOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                           ItemTemplate="{StaticResource SyncModeOptionTemplate}" SelectedValuePath="Value"
-                                          SelectedValue="{Binding NonWindows.SyncMode}" IsEnabled="{Binding NonWindows.Enabled}" MinHeight="36"/>
+                                          SelectedValue="{Binding NonWindows.SyncMode}" IsEnabled="{Binding NonWindows.Enabled}"
+                                          HorizontalContentAlignment="Left" MinHeight="40"/>
                             </StackPanel>
                             <StackPanel Grid.Column="4">
-                                <TextBlock Text="Reflex" Style="{StaticResource CardDesc}" Margin="0,0,0,4"/>
+                                <TextBlock Text="Reflex" Style="{StaticResource CardDesc}" Margin="2,0,0,6"/>
                                 <ComboBox ItemsSource="{Binding DataContext.ReflexMarkerOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                           DisplayMemberPath="DisplayName" SelectedValuePath="Value"
-                                          SelectedValue="{Binding NonWindows.ReflexMarkers}" MinHeight="36"/>
+                                          SelectedValue="{Binding NonWindows.ReflexMarkers}" HorizontalContentAlignment="Left" MinHeight="40"/>
                             </StackPanel>
                         </Grid>
                     </StackPanel>
@@ -302,7 +319,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Settings theme" VerticalAlignment="Center"/>
                             <ComboBox Grid.Column="1" SelectedValuePath="Tag" SelectedValue="{Binding Settings.ThemePreset, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="36">
-                                <ComboBoxItem Content="Steam" Tag="Steam"/><ComboBoxItem Content="Steam Dark" Tag="Steam Dark"/><ComboBoxItem Content="Windows 11" Tag="Windows 11"/>
+                                <ComboBoxItem Content="Steam" Tag="Steam"/><ComboBoxItem Content="Steam Dark" Tag="Steam Dark"/><ComboBoxItem Content="Windows 11" Tag="Windows 11"/><ComboBoxItem Content="OLED" Tag="OLED"/>
                             </ComboBox>
                             <TextBlock Grid.Column="2" Text="Glass effect" VerticalAlignment="Center" Margin="14,0,8,0"/>
                             <ToggleButton Grid.Column="3" Style="{StaticResource ToggleSwitchStyle}"
@@ -696,6 +713,17 @@
                     <!-- LastChildFill must be false, otherwise the refresh button consumes the whole row. -->
                     <Border Style="{StaticResource DownloadCard}">
                         <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="320"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="Limit by" VerticalAlignment="Center"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding LimitUnitOptions}"
+                                      DisplayMemberPath="DisplayName" SelectedValuePath="Value"
+                                      SelectedValue="{Binding Settings.LimitInputUnit, Mode=TwoWay}"
+                                      VerticalAlignment="Center" MinHeight="36"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource DownloadCard}">
+                        <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <TextBlock Text="Detected monitors" VerticalAlignment="Center"/>
                             <Button Grid.Column="1" Content="Refresh monitors"
@@ -765,6 +793,10 @@
                                                 <TextBlock Text="Exact Hz" Foreground="{DynamicResource ReShadeTextMuted}"
                                                            VerticalAlignment="Center" Margin="0,0,6,0"/>
                                                 <TextBox Grid.Column="1" Width="110" VerticalAlignment="Center"
+                                                         InputMethod.IsInputMethodEnabled="False"
+                                                         PreviewTextInput="NumericTextBox_PreviewTextInput"
+                                                         PreviewKeyDown="NumericTextBox_PreviewKeyDown"
+                                                         DataObject.Pasting="NumericTextBox_Pasting"
                                                          Text="{Binding ExactSyncRefreshHzText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinHeight="36"/>
                                                 <TextBlock Grid.Column="2" Text="(blank = auto)" Foreground="{DynamicResource ReShadeTextMuted}"
                                                            VerticalAlignment="Center" Margin="6,0,0,0"/>
@@ -811,7 +843,7 @@
                                         <!-- FPS presets: independent for every monitor -->
                                         <Border Padding="16,12" Margin="0,0,0,5" Background="{DynamicResource UiCard}" CornerRadius="4">
                                             <StackPanel>
-                                                <TextBlock Text="FPS presets (this monitor)" Foreground="{DynamicResource ReShadeText}" FontWeight="Normal" Margin="0,0,0,6"/>
+                                                <TextBlock Text="{Binding Source={x:Static local:LimitUnits.State}, Path=PresetsLabel}" Foreground="{DynamicResource ReShadeText}" FontWeight="Normal" Margin="0,0,0,6"/>
                                                 <!-- Refresh-rate matching only makes sense on fixed-refresh displays -->
                                                 <StackPanel Visibility="{Binding IsFixedRefresh, Converter={StaticResource BoolToVis}}">
                                                     <CheckBox Foreground="{DynamicResource ReShadeText}" Content="Match presets to refresh rate (Hz, Hz/2, Hz/3 … down to 28 FPS)"
@@ -856,7 +888,7 @@
                                                              IsEnabled="{Binding PresetsEditable}"
                                                              HorizontalContentAlignment="Center"
                                                              Margin="0,0,0,0" MinHeight="36"/>
-                                                    <TextBlock Text="e.g. 60" IsHitTestVisible="False" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                    <TextBlock Text="{Binding Source={x:Static local:LimitUnits.State}, Path=PresetExample}" IsHitTestVisible="False" HorizontalAlignment="Center" VerticalAlignment="Center"
                                                                Foreground="{DynamicResource ReShadeTextMuted}" Opacity="0.6">
                                                         <TextBlock.Style>
                                                             <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
@@ -947,22 +979,37 @@
                                     Click="ClearGlobalSettingsHotkey_Click" MinHeight="36"/>
                         </Grid>
                     </Border>
-                    <Border Style="{StaticResource DownloadCard}">
-                        <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="160"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="RTSS overlay on/off" VerticalAlignment="Center"
-                                       ToolTip="Toggles the RTSS overlay in games. Stored in RTSS (HotkeyHandler), so it works with RTSS even when Playnite is closed. Esc clears it."/>
-                            <TextBox Grid.Column="1" Style="{StaticResource HotkeyCaptureTextBox}"
-                                     Text="{Binding Settings.RtssOverlayHotkeyDisplay, Mode=OneWay}"
-                                     IsReadOnly="True" Cursor="Hand"
-                                     PreviewKeyDown="CaptureRtssOverlayHotkey_PreviewKeyDown"/>
-                            <Button Grid.Column="2" Content="Clear" Margin="8,0,0,0" Padding="8,4" MinWidth="72"
-                                    Click="ClearRtssOverlayHotkey_Click" MinHeight="36"/>
-                        </Grid>
-                    </Border>
                     <Expander Foreground="{DynamicResource ReShadeText}" IsExpanded="False" Margin="0,6,0,0">
                     <Expander.Header><TextBlock Text="RTSS" FontWeight="Normal" VerticalAlignment="Center"/></Expander.Header>
                     <StackPanel Margin="0,5,0,0">
+                    <Border Style="{StaticResource DownloadCard}" Padding="14,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*" MinWidth="170"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="Auto" MinWidth="130"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Style="{StaticResource HotkeyCaptureTextBox}"
+                                     Text="{Binding Settings.RtssOverlayHotkeyDisplay, Mode=OneWay}"
+                                     IsReadOnly="True" Cursor="Hand" VerticalAlignment="Center"
+                                     PreviewKeyDown="CaptureRtssOverlayHotkey_PreviewKeyDown"/>
+                            <ComboBox Grid.Column="2" Foreground="{DynamicResource ReShadeText}"
+                                      Background="{DynamicResource ReShadeControlBg}"
+                                      BorderBrush="{DynamicResource ReShadeBorder}"
+                                      VerticalAlignment="Center" MinHeight="36" SelectedIndex="0"
+                                      ToolTip="Stored in RTSS (HotkeyHandler), so it works even when Playnite is closed. Esc clears it.">
+                                <ComboBoxItem Content="Toggle RTSS overlay"/>
+                            </ComboBox>
+                            <Button Grid.Column="6" Foreground="{DynamicResource ReShadeTextMuted}"
+                                    Background="Transparent" BorderThickness="0" ToolTip="Clear hotkey"
+                                    Content="&#x2715;" Width="36" MinWidth="36" Padding="0" MinHeight="36"
+                                    VerticalAlignment="Center" Click="ClearRtssOverlayHotkey_Click"/>
+                        </Grid>
+                    </Border>
                     <ItemsControl ItemsSource="{Binding Settings.Hotkeys}" Margin="0,0,0,3">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -1004,7 +1051,7 @@
                                         <TextBox Text="{Binding FrameLimitText, UpdateSourceTrigger=PropertyChanged}"
                                                  Style="{StaticResource HotkeyCaptureTextBox}"
                                                  Width="72" VerticalAlignment="Center"/>
-                                        <TextBlock Text="FPS" Foreground="{DynamicResource ReShadeTextMuted}" VerticalAlignment="Center" Opacity="0.9" Margin="4,0,0,0"/>
+                                        <TextBlock Text="{Binding Source={x:Static local:LimitUnits.State}, Path=Suffix}" Foreground="{DynamicResource ReShadeTextMuted}" VerticalAlignment="Center" Opacity="0.9" Margin="4,0,0,0"/>
                                     </StackPanel>
 
                                     <ComboBox Grid.Column="4"
@@ -1074,7 +1121,14 @@
                                                       VerticalAlignment="Center" MinHeight="36">
                                                 <ComboBox.ItemTemplate>
                                                     <DataTemplate>
-                                                        <TextBlock Text="{Binding StringFormat='{}{0:0.####} FPS'}"/>
+                                                        <TextBlock>
+                                                            <TextBlock.Text>
+                                                                <MultiBinding Converter="{StaticResource LimitDisplay}">
+                                                                    <Binding/>
+                                                                    <Binding Source="{x:Static local:LimitUnits.State}" Path="IsFrametime"/>
+                                                                </MultiBinding>
+                                                            </TextBlock.Text>
+                                                        </TextBlock>
                                                     </DataTemplate>
                                                 </ComboBox.ItemTemplate>
                                             </ComboBox>

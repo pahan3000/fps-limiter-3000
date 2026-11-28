@@ -420,6 +420,7 @@ namespace FPSLimiter
         private bool enabled = false;
         private double frameLimit = 0;
         private string frameLimitText = FormatFrameLimit(0);
+        private LimitUnit frameLimitTextUnit = LimitUnits.Current;
         private FpsSyncMode syncMode = FpsSyncMode.Async;
         private ReflexMarkerMode reflexMarkers = ReflexMarkerMode.Enabled;
 
@@ -446,6 +447,7 @@ namespace FPSLimiter
                 if (!string.Equals(frameLimitText, formatted, StringComparison.Ordinal))
                 {
                     frameLimitText = formatted;
+                    frameLimitTextUnit = LimitUnits.Current;
                     OnPropertyChanged(nameof(FrameLimitText));
                 }
             }
@@ -457,6 +459,9 @@ namespace FPSLimiter
         /// fields accept fractional values like "59.9" without WPF's default numeric converter
         /// fighting the user mid-keystroke.
         /// </summary>
+        // Display-only proxy of FrameLimit in the active unit. Never persisted: a value saved as ms text and
+        // re-parsed on load while the unit is still FPS silently turned 16.69 ms into a 16.69 FPS cap.
+        [DontSerialize]
         public string FrameLimitText
         {
             get => frameLimitText;
@@ -467,16 +472,30 @@ namespace FPSLimiter
                     return;
                 }
 
+                // The box still holds text rendered in the previous unit (FPS <-> ms was just switched and
+                // it has not been re-rendered yet). Parsing it in the new unit would corrupt the stored cap.
+                if (frameLimitTextUnit != LimitUnits.Current) { RefreshLimitText(); return; }
+
                 frameLimitText = value;
                 OnPropertyChanged(nameof(FrameLimitText));
 
-                if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) &&
-                    parsed >= 0 && parsed <= 1000)
+                // Text that merely echoes the stored value is not re-parsed: in frametime mode the rounded
+                // ms figure would otherwise nudge the exact FPS (16.6667 ms is not exactly 60 FPS).
+                if (!string.Equals(value, FormatFrameLimit(frameLimit), StringComparison.Ordinal) &&
+                    LimitUnits.TryParseLimit(value, true, out var parsed) && parsed <= 1000)
                 {
                     frameLimit = parsed;
                     OnPropertyChanged(nameof(FrameLimit));
                 }
             }
+        }
+
+        /// <summary>Re-renders the cap text in the active limit unit (FPS or frametime ms).</summary>
+        public void RefreshLimitText()
+        {
+            frameLimitText = FormatFrameLimit(frameLimit);
+            frameLimitTextUnit = LimitUnits.Current;
+            OnPropertyChanged(nameof(FrameLimitText));
         }
 
         public FpsSyncMode SyncMode
@@ -497,7 +516,7 @@ namespace FPSLimiter
 
         private static string FormatFrameLimit(double value)
         {
-            return value.ToString("0.####", CultureInfo.InvariantCulture);
+            return LimitUnits.FormatNumber(value);
         }
     }
 
@@ -671,6 +690,7 @@ namespace FPSLimiter
                 selectedRefreshRateHz = value;
                 OnPropertyChanged(nameof(SelectedRefreshRateHz));
                 LoadExactHzText();
+                if (!initializing) ApplyRefreshRateNow(value);
                 if (!initializing && Monitor.ForcedWidth > 0)
                 {
                     Monitor.ForcedRefreshHz = value;
@@ -678,6 +698,35 @@ namespace FPSLimiter
                     OnPropertyChanged(nameof(ForcedModeLabel));
                 }
             }
+        }
+
+        /// <summary>
+        /// Picking a refresh rate in Global settings switches the monitor to it right away, so the
+        /// "Detected" value (and the Exact Hz box) describe the mode that is really active.
+        /// </summary>
+        private void ApplyRefreshRateNow(int hz)
+        {
+            if (hz <= 1) return;
+            try
+            {
+                var current = RefreshRateManager.GetCurrentMode(DeviceName);
+                if (current != null && current.Hz != hz)
+                {
+                    var ok = Monitor.ForcedWidth > 0 && Monitor.ForcedHeight > 0
+                        ? RefreshRateManager.SetDisplayMode(DeviceName, Monitor.ForcedWidth, Monitor.ForcedHeight, hz)
+                        : RefreshRateManager.SetRefreshRate(hz, DeviceName);
+                    if (!ok) return;
+                }
+            }
+            catch { /* the picker must never throw */ }
+
+            // Windows needs a moment before the new timing is reported.
+            System.Threading.Tasks.Task.Delay(1200).ContinueWith(_ =>
+            {
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher != null)
+                    dispatcher.BeginInvoke(new Action(() => OnPropertyChanged(nameof(DetectedSyncRefreshHzLabel))));
+            });
         }
 
         /// <summary>Blank means auto for the selected nominal mode only.</summary>
@@ -813,7 +862,7 @@ namespace FPSLimiter
             ? "All games on this monitor run at " + Monitor.ForcedWidth + " × " + Monitor.ForcedHeight +
               (Monitor.ForcedRefreshHz > 0 ? " @ " + Monitor.ForcedRefreshHz + " Hz" : "") +
               " and the previous mode is restored when they close."
-            : "Not forced: games keep the current Windows display mode. Pick a resolution to force it for every game.";
+            : string.Empty;
 
         // ── Per-monitor presets ─────────────────────────────────────────────────────────────
         public string PresetsText
@@ -837,7 +886,14 @@ namespace FPSLimiter
 
         /// <summary>Editable, individual preset values for the chip-based settings UI.</summary>
         public List<string> PresetEntries =>
-            FPSLimiterSettings.ParsePresetValues(PresetsText).Select(FormatPreset).ToList();
+            FPSLimiterSettings.ParsePresetValues(PresetsText).Select(FormatLimitPreset).ToList();
+
+        /// <summary>Re-renders the preset chips / preview in the active limit unit (FPS or frametime ms).</summary>
+        public void RefreshLimitDisplay()
+        {
+            OnPropertyChanged(nameof(PresetEntries));
+            OnPropertyChanged(nameof(MatchedPresetsPreview));
+        }
 
         /// <summary>Temporary input for adding one FPS preset at a time.</summary>
         public string NewPresetText
@@ -848,8 +904,7 @@ namespace FPSLimiter
 
         public bool TryAddPreset()
         {
-            var input = (NewPresetText ?? string.Empty).Trim().Replace(',', '.');
-            if (!double.TryParse(input, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ||
+            if (!LimitUnits.TryParseLimit(NewPresetText, false, out var value) ||
                 double.IsNaN(value) || double.IsInfinity(value) || value <= 0 || value > 1000)
             {
                 return false;
@@ -869,12 +924,13 @@ namespace FPSLimiter
 
         public void RemovePreset(string presetText)
         {
-            var input = (presetText ?? string.Empty).Trim().Replace(',', '.');
-            if (!double.TryParse(input, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
-                return;
-
+            var input = (presetText ?? string.Empty).Trim();
             var values = FPSLimiterSettings.ParsePresetValues(PresetsText);
-            if (values.RemoveAll(existing => Math.Abs(existing - value) < 0.001) > 0)
+            // The chips show each preset in the active unit, so match on that text first.
+            var removed = values.RemoveAll(existing => string.Equals(FormatLimitPreset(existing), input, StringComparison.Ordinal));
+            if (removed == 0 && LimitUnits.TryParseLimit(input, false, out var value))
+                removed = values.RemoveAll(existing => Math.Abs(existing - value) < 0.001);
+            if (removed > 0)
                 PresetsText = string.Join(", ", values.OrderBy(v => v).Select(FormatPreset));
         }
 
@@ -971,20 +1027,26 @@ namespace FPSLimiter
                     var presets = BuildPresetValues();
                     return string.Join(" / ", rates.OrderByDescending(r => r).Select(FormatPreset)) + " Hz → " +
                         (presets.Count == 0 ? "no preset reaches 28 FPS"
-                            : string.Join(" / ", presets.OrderByDescending(v => v).Select(FormatPreset)) + " FPS");
+                            : string.Join(" / ", presets.OrderByDescending(v => v).Select(FormatLimitPreset)) + " " + LimitUnits.Suffix);
                 }
                 var hz = EffectiveRefreshHz();
                 if (hz <= 0) return "Refresh rate could not be detected.";
                 var values = BuildPresetValues();
                 return hz.ToString("0.####", CultureInfo.InvariantCulture) + " Hz → " +
                     (values.Count == 0 ? "no preset reaches 28 FPS"
-                        : string.Join(" / ", values.OrderByDescending(v => v).Select(FormatPreset)) + " FPS");
+                        : string.Join(" / ", values.OrderByDescending(v => v).Select(FormatLimitPreset)) + " " + LimitUnits.Suffix);
             }
         }
 
         private static string FormatPreset(double value)
         {
             return value.ToString("0.####", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>A preset (stored as FPS) in the active limit unit, number only.</summary>
+        private static string FormatLimitPreset(double value)
+        {
+            return LimitUnits.FormatNumber(value);
         }
 
         /// <summary>Regenerates this monitor's presets when "match presets to refresh rate" is on.</summary>
@@ -1166,12 +1228,30 @@ namespace FPSLimiter
             set => SetValue(ref showTopBarIcon, value);
         }
 
+        private LimitUnit limitInputUnit = LimitUnit.Fps;
+        /// <summary>
+        /// How caps are typed and shown: FPS or frametime in ms. Caps are always stored and applied as FPS
+        /// (ms = 1000 / FPS), so the RTSS and Special K backends are unaffected.
+        /// </summary>
+        public LimitUnit LimitInputUnit
+        {
+            get => limitInputUnit;
+            set
+            {
+                // Switch the unit first: SetValue raises PropertyChanged, and listeners re-render
+                // the cap texts using the active unit.
+                LimitUnits.SetUnit(value);
+                SetValue(ref limitInputUnit, value);
+            }
+        }
+
         private string themePreset = "Steam Dark";
         public string ThemePreset
         {
             get => themePreset;
             set => SetValue(ref themePreset,
                 string.Equals(value, "Steam Dark", StringComparison.OrdinalIgnoreCase) ? "Steam Dark" :
+                string.Equals(value, "OLED", StringComparison.OrdinalIgnoreCase) ? "OLED" :
                 string.Equals(value, "Windows 11", StringComparison.OrdinalIgnoreCase) ? "Windows 11" : "Steam");
         }
 
@@ -2498,6 +2578,10 @@ namespace FPSLimiter
         /// </summary>
         public int ForcedRefreshRateHz { get; set; } = 0;
 
+        /// <summary>When both &gt; 0, run the game's monitor at this resolution for the session (restored on stop).</summary>
+        public int ForcedWidth { get; set; } = 0;
+        public int ForcedHeight { get; set; } = 0;
+
         /// <summary>
         /// Optional per-game exact signal timing for Scanline/Latent Sync. This is an FPS
         /// target only; it does not change the display mode. 0 = autodetect via CCD.
@@ -2605,6 +2689,7 @@ namespace FPSLimiter
         private bool disableCap = false; // kept for backward-compatible settings deserialization
         private double frameLimit = 60;
         private string frameLimitText = FormatFrameLimit(60);
+        private LimitUnit frameLimitTextUnit = LimitUnits.Current;
         private FpsSyncMode syncMode = FpsSyncMode.Async;
         private ModifierKeys modifiers = ModifierKeys.Control | ModifierKeys.Alt;
         private Key key = Key.None;
@@ -2676,6 +2761,7 @@ namespace FPSLimiter
                 if (!string.Equals(frameLimitText, formatted, StringComparison.Ordinal))
                 {
                     frameLimitText = formatted;
+                    frameLimitTextUnit = LimitUnits.Current;
                     OnPropertyChanged(nameof(FrameLimitText));
                 }
 
@@ -2692,6 +2778,9 @@ namespace FPSLimiter
         /// Windows locale) and only pushes a value into FrameLimit once it's a complete, valid number,
         /// so partial input while typing is never rejected or reformatted out from under the user.
         /// </summary>
+        // Display-only proxy of FrameLimit in the active unit. Never persisted: a value saved as ms text and
+        // re-parsed on load while the unit is still FPS silently turned 16.69 ms into a 16.69 FPS cap.
+        [DontSerialize]
         public string FrameLimitText
         {
             get => frameLimitText;
@@ -2702,17 +2791,30 @@ namespace FPSLimiter
                     return;
                 }
 
+                // The box still holds text rendered in the previous unit (FPS <-> ms was just switched and
+                // it has not been re-rendered yet). Parsing it in the new unit would corrupt the stored cap.
+                if (frameLimitTextUnit != LimitUnits.Current) { RefreshLimitText(); return; }
+
                 frameLimitText = value;
                 OnPropertyChanged(nameof(FrameLimitText));
 
-                if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) &&
-                    parsed > 0 && parsed <= 1000)
+                if (!string.Equals(value, FormatFrameLimit(frameLimit), StringComparison.Ordinal) &&
+                    LimitUnits.TryParseLimit(value, false, out var parsed) && parsed <= 1000)
                 {
                     frameLimit = parsed;
                     OnPropertyChanged(nameof(FrameLimit));
                     OnPropertyChanged(nameof(ActionSummary));
                 }
             }
+        }
+
+        /// <summary>Re-renders the cap text in the active limit unit (FPS or frametime ms).</summary>
+        public void RefreshLimitText()
+        {
+            frameLimitText = FormatFrameLimit(frameLimit);
+            frameLimitTextUnit = LimitUnits.Current;
+            OnPropertyChanged(nameof(FrameLimitText));
+            OnPropertyChanged(nameof(ActionSummary));
         }
 
         /// <summary>Sync mode applied when <see cref="Action"/> is <see cref="HotkeyAction.SetSyncMode"/>.</summary>
@@ -2758,14 +2860,14 @@ namespace FPSLimiter
                     case HotkeyAction.ToggleFrameColorIndicator:
                         return "Toggle FCAT indicator";
                     default:
-                        return FormatFrameLimit(FrameLimit) + " FPS";
+                        return LimitUnits.Format(FrameLimit);
                 }
             }
         }
 
         private static string FormatFrameLimit(double value)
         {
-            return value.ToString("0.####", CultureInfo.InvariantCulture);
+            return LimitUnits.FormatNumber(value);
         }
 
         public ModifierKeys Modifiers
@@ -2994,6 +3096,13 @@ namespace FPSLimiter
             .Select(mode => new ReflexMarkerOption { Value = mode, DisplayName = ReflexMarkerModeNames.GetDisplayName(mode) })
             .ToList();
 
+        /// <summary>Options for the limit unit combo box (FPS / Frametime).</summary>
+        public List<LimitUnitOption> LimitUnitOptions { get; } = new List<LimitUnitOption>
+        {
+            new LimitUnitOption { Value = LimitUnit.Fps, DisplayName = "FPS" },
+            new LimitUnitOption { Value = LimitUnit.Frametime, DisplayName = "Frametime (ms)" }
+        };
+
         /// <summary>Options for the hotkey action combo box (Apply FPS / Disable / Set sync mode).</summary>
         public List<HotkeyActionOption> HotkeyActionOptions { get; } = new List<HotkeyActionOption>
         {
@@ -3025,8 +3134,67 @@ namespace FPSLimiter
             get => settings;
             set
             {
+                if (settings != null)
+                {
+                    settings.PropertyChanged -= OnSettingsPropertyChanged;
+                }
+
                 settings = value;
+                if (settings != null)
+                {
+                    settings.PropertyChanged += OnSettingsPropertyChanged;
+                    LimitUnits.SetUnit(settings.LimitInputUnit);
+                    RefreshLimitTexts();
+                }
+
                 OnPropertyChanged();
+            }
+        }
+
+        private void OnSettingsPropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(FPSLimiterSettings.LimitInputUnit))
+            {
+                RefreshLimitTexts();
+            }
+        }
+
+        /// <summary>Re-renders every cap text box / preset chip in the active limit unit (values stay FPS).</summary>
+        private void RefreshLimitTexts()
+        {
+            var s = settings;
+            if (s == null) return;
+
+            s.GlobalDesktop?.RefreshLimitText();
+            s.GlobalDesktopNonWindows?.RefreshLimitText();
+            s.GlobalFullscreen?.RefreshLimitText();
+            s.GlobalFullscreenNonWindows?.RefreshLimitText();
+            if (s.MonitorGlobals != null)
+            {
+                foreach (var monitor in s.MonitorGlobals.Where(m => m != null))
+                {
+                    monitor.GetLimit(true).RefreshLimitText();
+                    monitor.GetLimit(false).RefreshLimitText();
+                    foreach (var resolution in (monitor.Resolutions ?? new List<ResolutionGlobalSettings>())
+                        .Where(r => r != null))
+                    {
+                        resolution.GetLimit(true).RefreshLimitText();
+                        resolution.GetLimit(false).RefreshLimitText();
+                    }
+                }
+            }
+
+            if (s.Hotkeys != null)
+            {
+                foreach (var hotkey in s.Hotkeys)
+                {
+                    hotkey.RefreshLimitText();
+                }
+            }
+
+            foreach (var editor in MonitorResolutionEditors)
+            {
+                editor.RefreshLimitDisplay();
             }
         }
 
@@ -3243,7 +3411,7 @@ namespace FPSLimiter
                 limit.Enabled &&
                 (limit.FrameLimit <= 0 || limit.FrameLimit > 1000))
             {
-                errors.Add($"Global FPS limit ({label}): enter an FPS value between 1 and 1000, or uncheck Enabled.");
+                errors.Add($"Global FPS limit ({label}): enter {LimitUnits.RangeText}, or uncheck Enabled.");
             }
         }
 
@@ -3295,7 +3463,7 @@ namespace FPSLimiter
                 if (hotkey.Key != Key.None && !hotkey.DisableCap &&
                     (hotkey.FrameLimit <= 0 || hotkey.FrameLimit > 1000))
                 {
-                    errors.Add($"Hotkey {hotkey.DisplayText}: enter an FPS value between 1 and 1000, or check \"Disable cap\".");
+                    errors.Add($"Hotkey {hotkey.DisplayText}: enter {LimitUnits.RangeText}, or check \"Disable cap\".");
                 }
             }
 
@@ -3333,25 +3501,10 @@ namespace FPSLimiter
             Settings.PresetsText = string.Join(", ", Settings.GetPresetValues().Select(FormatFps));
             Settings.RtssPath = Settings.RtssPath?.Trim() ?? string.Empty;
             Settings.SpecialKPath = Settings.SpecialKPath?.Trim() ?? string.Empty;
-            Settings.GlobalDesktop.FrameLimitText = FormatFps(Settings.GlobalDesktop.FrameLimit);
-            Settings.GlobalDesktopNonWindows.FrameLimitText = FormatFps(Settings.GlobalDesktopNonWindows.FrameLimit);
-            Settings.GlobalFullscreen.FrameLimitText = FormatFps(Settings.GlobalFullscreen.FrameLimit);
-            Settings.GlobalFullscreenNonWindows.FrameLimitText = FormatFps(Settings.GlobalFullscreenNonWindows.FrameLimit);
-            foreach (var monitor in Settings.MonitorGlobals.Where(m => m != null))
-            {
-                monitor.GetLimit(true).FrameLimitText = FormatFps(monitor.GetLimit(true).FrameLimit);
-                monitor.GetLimit(false).FrameLimitText = FormatFps(monitor.GetLimit(false).FrameLimit);
-                foreach (var resolution in (monitor.Resolutions ?? new List<ResolutionGlobalSettings>())
-                    .Where(r => r != null))
-                {
-                    resolution.GetLimit(true).FrameLimitText = FormatFps(resolution.GetLimit(true).FrameLimit);
-                    resolution.GetLimit(false).FrameLimitText = FormatFps(resolution.GetLimit(false).FrameLimit);
-                }
-            }
+            RefreshLimitTexts();
 
             foreach (var hotkey in Settings.Hotkeys)
             {
-                hotkey.FrameLimitText = FormatFps(hotkey.FrameLimit);
                 if (hotkey.SyncMode == FpsSyncMode.UseGlobal)
                 {
                     hotkey.SyncMode = FpsSyncMode.Async;

@@ -2021,6 +2021,35 @@ namespace FPSLimiter
             return null;
         }
 
+        /// <summary>
+        /// Diagnostic text for the "Current" label tooltip: where the effective cap comes from and the raw
+        /// stored FPS value, so a wrong number can be traced to the exact setting that holds it.
+        /// </summary>
+        public string DescribeLimitSource(Game game)
+        {
+            try
+            {
+                if (game == null) return string.Empty;
+                var cap = GetEffectiveLimit(game);
+                if (!cap.HasValue) return "No cap in effect.";
+                var profile = Settings.GetGameProfile(game.Id);
+                var modeLimit = profile?.GetMode(CurrentMode);
+                var windowsGame = FPSLimiterSettings.IsWindowsGame(game);
+                var device = ResolveGameMonitorDeviceName(game.Id);
+                string source;
+                if (modeLimit != null && modeLimit.Enabled && modeLimit.FrameLimit > 0 && Math.Abs(modeLimit.FrameLimit - cap.Value) < 0.0001)
+                    source = "this game's own cap (" + CurrentMode + " mode)";
+                else if (Settings.PerGameRefreshRateEnabled && profile != null && profile.ForcedRefreshRateHz > 0)
+                    source = "this game's forced refresh rate (" + profile.ForcedRefreshRateHz + " Hz)";
+                else
+                    source = "Global settings (" + (windowsGame ? "Windows" : "non-Windows") + " games, " + CurrentMode + ", monitor " + device + ")";
+                var fps = cap.Value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+                var ms = cap.Value > 0 ? (1000.0 / cap.Value).ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) : "-";
+                return "Stored cap: " + fps + " FPS (= " + ms + " ms)\nSource: " + source;
+            }
+            catch { return string.Empty; }
+        }
+
         public bool ResolveSteamLogSilent(Game game)
         {
             var profile = game != null ? Settings.GetGameProfile(game.Id) : null;
@@ -2946,7 +2975,12 @@ namespace FPSLimiter
             {
                 var device = !string.IsNullOrEmpty(deviceName) ? deviceName : ResolveGameMonitorDeviceName(game.Id);
                 var monitor = Settings.GetMonitorProfile(device);
-                if (monitor == null || monitor.ForcedWidth <= 0 || monitor.ForcedHeight <= 0) return;
+                // A per-game resolution (Display section) wins over the monitor-wide forced mode.
+                var gameProfile = Settings.GetGameProfile(game.Id);
+                var gameRes = gameProfile != null && gameProfile.ForcedWidth > 0 && gameProfile.ForcedHeight > 0;
+                var forcedW = gameRes ? gameProfile.ForcedWidth : (monitor?.ForcedWidth ?? 0);
+                var forcedH = gameRes ? gameProfile.ForcedHeight : (monitor?.ForcedHeight ?? 0);
+                if (forcedW <= 0 || forcedH <= 0) return;
 
                 lock (displayModeLock)
                 {
@@ -2955,8 +2989,14 @@ namespace FPSLimiter
 
                     var current = RefreshRateManager.GetCurrentMode(device);
                     if (current == null) return;
-                    var hz = monitor.ForcedRefreshHz > 0 ? monitor.ForcedRefreshHz : current.Hz;
-                    var alreadyThere = current.Width == monitor.ForcedWidth && current.Height == monitor.ForcedHeight && current.Hz == hz;
+                    var hz = !gameRes && monitor != null && monitor.ForcedRefreshHz > 0 ? monitor.ForcedRefreshHz : current.Hz;
+                    if (gameRes)
+                    {
+                        // Keep the current Hz when the new resolution offers it, otherwise the highest one it has.
+                        var offered = RefreshRateManager.GetSupportedRefreshRatesAt(device, forcedW, forcedH);
+                        if (offered.Count > 0 && !offered.Contains(hz)) hz = offered.Max();
+                    }
+                    var alreadyThere = current.Width == forcedW && current.Height == forcedH && current.Hz == hz;
 
                     if (!alreadyThere)
                     {
@@ -2966,9 +3006,9 @@ namespace FPSLimiter
                             forcedOriginals[device] = current;
                             PersistDisplayModes();
                         }
-                        if (!RefreshRateManager.SetDisplayMode(device, monitor.ForcedWidth, monitor.ForcedHeight, hz))
+                        if (!RefreshRateManager.SetDisplayMode(device, forcedW, forcedH, hz))
                         {
-                            logger.Warn($"FPS Limiter: could not force {monitor.ForcedWidth}x{monitor.ForcedHeight} @ {hz} Hz on {device} for {game.Name}.");
+                            logger.Warn($"FPS Limiter: could not force {forcedW}x{forcedH} @ {hz} Hz on {device} for {game.Name}.");
                             if (recordOriginal && !forcedHolders.Any(k => k.EndsWith("|" + device, StringComparison.OrdinalIgnoreCase)))
                             {
                                 forcedOriginals.Remove(device);
@@ -2976,7 +3016,7 @@ namespace FPSLimiter
                             }
                             return;
                         }
-                        logger.Info($"FPS Limiter: forced {monitor.ForcedWidth}x{monitor.ForcedHeight} @ {hz} Hz on {device} for {game.Name} (was {current}).");
+                        logger.Info($"FPS Limiter: forced {forcedW}x{forcedH} @ {hz} Hz on {device} for {game.Name} (was {current}).");
                     }
                     forcedHolders.Add(key);
                 }
@@ -3077,6 +3117,17 @@ namespace FPSLimiter
             settingsViewModel.SaveSettings();
             foreach (var g in games)
                 ReapplyIfRunning(g);
+        }
+
+        public void SetGameForcedResolution(IEnumerable<Game> games, int width, int height)
+        {
+            foreach (var g in games)
+            {
+                var p = Settings.GetOrCreateGameProfile(g.Id);
+                p.ForcedWidth = width > 0 && height > 0 ? width : 0;
+                p.ForcedHeight = width > 0 && height > 0 ? height : 0;
+            }
+            settingsViewModel.SaveSettings();
         }
 
         public void SetGameForcedRefreshRate(IEnumerable<Game> games, int hz)

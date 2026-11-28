@@ -39,7 +39,7 @@
                 <Expander.Header><TextBlock Text="FPS cap latency settings" FontWeight="SemiBold"/></Expander.Header>
                 <StackPanel Margin="8,6,0,4">
                     <TextBlock Text="FPS cap" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8"/>
-                    <TextBlock x:Name="CurrentFpsText" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
+                    <TextBlock x:Name="CurrentFpsText" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8" Cursor="Hand" ToolTip="Double-click to edit" MouseLeftButtonDown="OnCurrentFpsMouseDown"/>
                     <ItemsControl x:Name="PresetList">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate><UniformGrid Columns="3"/></ItemsPanelTemplate>

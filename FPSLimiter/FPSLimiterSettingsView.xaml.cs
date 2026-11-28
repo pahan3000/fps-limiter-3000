@@ -1201,6 +1201,53 @@ namespace FPSLimiterSettingsUI
             }
         }
 
+        private static readonly System.Text.RegularExpressions.Regex NumberOnlyPattern =
+            new System.Text.RegularExpressions.Regex(@"^\d*\.?\d*$");
+
+        /// <summary>Numbers only (one decimal point); a typed comma becomes a point.</summary>
+        private void NumericTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            var box = (TextBox)sender;
+            var typed = (e.Text ?? string.Empty).Replace(',', '.');
+            var start = box.SelectionStart;
+            var text = box.Text.Remove(start, box.SelectionLength).Insert(start, typed);
+            if (!NumberOnlyPattern.IsMatch(text))
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (typed != e.Text)
+            {
+                box.Text = text;
+                box.CaretIndex = start + typed.Length;
+                e.Handled = true;
+            }
+        }
+
+        private void NumericTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Space) e.Handled = true;
+        }
+
+        private void NumericTextBox_Pasting(object sender, DataObjectPastingEventArgs e)
+        {
+            var box = (TextBox)sender;
+            var pasted = (e.DataObject.GetData(DataFormats.UnicodeText) as string ?? string.Empty).Trim().Replace(',', '.');
+            var start = box.SelectionStart;
+            var text = box.Text.Remove(start, box.SelectionLength).Insert(start, pasted);
+            if (NumberOnlyPattern.IsMatch(text)) return;
+
+            // Pasted something like "refresh-rate: 50 Hz": keep only the first number ("50").
+            var match = System.Text.RegularExpressions.Regex.Match(pasted, @"\d+(?:\.\d+)?");
+            e.CancelCommand();
+            if (!match.Success) return;
+            var candidate = box.Text.Remove(start, box.SelectionLength).Insert(start, match.Value);
+            if (!NumberOnlyPattern.IsMatch(candidate)) return;
+            box.Text = candidate;
+            box.CaretIndex = start + match.Value.Length;
+        }
+
         private void MonitorPresetInput_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key != Key.Return)
